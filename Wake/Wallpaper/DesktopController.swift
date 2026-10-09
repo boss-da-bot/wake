@@ -41,6 +41,7 @@ final class DesktopController {
             if sample.coveredDisplays.contains(displayID) { continue }
             window.render(
                 splats: sample.splatsByDisplay[displayID] ?? [],
+                obstacles: sample.obstaclesByDisplay[displayID] ?? [],
                 dt: dt,
                 iterations: iterations,
                 drift: drift,
@@ -57,7 +58,21 @@ final class DesktopController {
 }
 
 private extension DesktopWindow {
-    func render(splats: [Splat], dt: Float, iterations: Int, drift: Float, background: SIMD3<Float>) {
-        fluidView?.render(splats: splats, dt: dt, iterations: iterations, drift: drift, background: background)
+    func render(
+        splats: [Splat],
+        obstacles: [Obstacle],
+        dt: Float,
+        iterations: Int,
+        drift: Float,
+        background: SIMD3<Float>
+    ) {
+        fluidView?.render(
+            splats: splats,
+            obstacles: obstacles,
+            dt: dt,
+            iterations: iterations,
+            drift: drift,
+            background: background
+        )
     }
 }

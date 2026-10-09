@@ -33,7 +33,7 @@ final class FluidGPU {
 
         let names = [
             "advect", "splat", "curlField", "confine", "divergence",
-            "clearField", "jacobi", "gradientSubtract"
+            "clearField", "jacobi", "gradientSubtract", "rasterObstacles"
         ]
         var compiled: [String: MTLComputePipelineState] = [:]
         compiled.reserveCapacity(names.count)
@@ -102,6 +102,7 @@ final class FluidField {
     private var pressure: [MTLTexture]
     private let divergenceTex: MTLTexture
     private let curlTex: MTLTexture
+    private let obstacleTex: MTLTexture
     private var velocityIndex = 0
     private var dyeIndex = 0
     private var time: Float = 0
@@ -122,7 +123,8 @@ final class FluidField {
               let pressure0 = Self.makeTexture(device: gpu.device, width: width, height: height, label: "pressure0"),
               let pressure1 = Self.makeTexture(device: gpu.device, width: width, height: height, label: "pressure1"),
               let divergenceTex = Self.makeTexture(device: gpu.device, width: width, height: height, label: "divergence"),
-              let curlTex = Self.makeTexture(device: gpu.device, width: width, height: height, label: "curl") else {
+              let curlTex = Self.makeTexture(device: gpu.device, width: width, height: height, label: "curl"),
+              let obstacleTex = Self.makeTexture(device: gpu.device, width: width, height: height, label: "obstacles") else {
             return nil
         }
         velocity = [velocity0, velocity1]
@@ -130,6 +132,7 @@ final class FluidField {
         pressure = [pressure0, pressure1]
         self.divergenceTex = divergenceTex
         self.curlTex = curlTex
+        self.obstacleTex = obstacleTex
         clearAll()
     }
 
@@ -138,6 +141,7 @@ final class FluidField {
     func stepAndPresent(
         in view: MTKView,
         splats: [Splat],
+        obstacles: [Obstacle],
         dt rawDT: Float,
         iterations: Int,
         drift: Float,
@@ -146,6 +150,7 @@ final class FluidField {
         guard let commandBuffer = gpu.queue.makeCommandBuffer() else { return }
         commandBuffer.label = "WakeFrame"
         let dt = min(max(rawDT, Float(0)), Float(0.05))
+        rasterObstacles(commandBuffer, obstacles: obstacles)
         if dt > 0 {
             time += dt
             let velocityDissipation = exp(-Tuning.velocityDecay * dt)
@@ -191,12 +196,14 @@ final class FluidField {
                 encoder.setTexture(velocity[velocityIndex], index: 0)
                 encoder.setTexture(curlTex, index: 1)
                 encoder.setTexture(velocity[1 - velocityIndex], index: 2)
+                encoder.setTexture(obstacleTex, index: 3)
             }
             velocityIndex = 1 - velocityIndex
 
             dispatch(commandBuffer, "divergence") { encoder in
                 encoder.setTexture(velocity[velocityIndex], index: 0)
                 encoder.setTexture(divergenceTex, index: 1)
+                encoder.setTexture(obstacleTex, index: 2)
             }
             dispatch(commandBuffer, "clearField") { encoder in
                 encoder.setTexture(pressure[0], index: 0)
@@ -208,6 +215,7 @@ final class FluidField {
                     encoder.setTexture(pressure[pressureIndex], index: 0)
                     encoder.setTexture(divergenceTex, index: 1)
                     encoder.setTexture(pressure[1 - pressureIndex], index: 2)
+                    encoder.setTexture(obstacleTex, index: 3)
                 }
                 pressureIndex = 1 - pressureIndex
             }
@@ -215,6 +223,7 @@ final class FluidField {
                 encoder.setTexture(velocity[velocityIndex], index: 0)
                 encoder.setTexture(pressure[pressureIndex], index: 1)
                 encoder.setTexture(velocity[1 - velocityIndex], index: 2)
+                encoder.setTexture(obstacleTex, index: 3)
             }
             velocityIndex = 1 - velocityIndex
         }
@@ -224,6 +233,7 @@ final class FluidField {
            let encoder = commandBuffer.makeRenderCommandEncoder(descriptor: pass) {
             encoder.setRenderPipelineState(gpu.composePipeline)
             encoder.setFragmentTexture(dye[dyeIndex], index: 0)
+            encoder.setFragmentTexture(obstacleTex, index: 1)
             var compose = ComposeParams(background: SIMD4(background.x, background.y, background.z, 1))
             encoder.setFragmentBytes(&compose, length: MemoryLayout<ComposeParams>.stride, index: 0)
             encoder.drawPrimitives(type: .triangle, vertexStart: 0, vertexCount: 3)
@@ -231,6 +241,28 @@ final class FluidField {
             commandBuffer.present(drawable)
         }
         commandBuffer.commit()
+    }
+
+    private func rasterObstacles(_ commandBuffer: MTLCommandBuffer, obstacles: [Obstacle]) {
+        let capped = Array(obstacles.prefix(48))
+        var list = capped
+        if list.isEmpty {
+            list = [Obstacle(rect: SIMD4<Float>(0, 0, 0, 0), motion: SIMD4<Float>(0, 0, 0, 0))]
+        }
+        var header = ObstacleHeader(count: UInt32(capped.count), pad0: 0, pad1: 0, pad2: 0)
+        dispatch(commandBuffer, "rasterObstacles") { encoder in
+            encoder.setTexture(obstacleTex, index: 0)
+            list.withUnsafeBytes { raw in
+                if let base = raw.baseAddress, raw.count > 0 {
+                    encoder.setBytes(base, length: raw.count, index: 0)
+                }
+            }
+            withUnsafeBytes(of: header) { raw in
+                if let base = raw.baseAddress {
+                    encoder.setBytes(base, length: MemoryLayout<ObstacleHeader>.stride, index: 1)
+                }
+            }
+        }
     }
 
     private func advect(
@@ -246,6 +278,7 @@ final class FluidField {
             encoder.setTexture(source, index: 0)
             encoder.setTexture(dest, index: 1)
             encoder.setTexture(velocityTexture, index: 2)
+            encoder.setTexture(obstacleTex, index: 3)
         }
     }
 
@@ -262,6 +295,7 @@ final class FluidField {
         dispatch(commandBuffer, "splat") { encoder in
             encoder.setTexture(source, index: 0)
             encoder.setTexture(dest, index: 1)
+            encoder.setTexture(obstacleTex, index: 2)
             copy.withUnsafeBytes { raw in
                 if let base = raw.baseAddress, raw.count > 0 {
                     encoder.setBytes(base, length: raw.count, index: 0)
@@ -317,7 +351,7 @@ final class FluidField {
 
     private func clearAll() {
         guard let commandBuffer = gpu.queue.makeCommandBuffer() else { return }
-        let textures = velocity + dye + pressure
+        let textures = velocity + dye + pressure + [obstacleTex]
         for texture in textures {
             dispatch(commandBuffer, "clearField") { encoder in
                 encoder.setTexture(texture, index: 0)

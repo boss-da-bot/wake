@@ -40,12 +40,25 @@ struct ComposeParams {
     float4 background;
 };
 
+struct Obstacle {
+    float4 rect;   // xy min uv, zw max uv
+    float4 motion; // xy origin velocity (uv/s), zw size velocity (uv/s)
+};
+
+struct ObstacleHeader {
+    uint count;
+    uint pad0;
+    float pad1;
+    float pad2;
+};
+
 struct VSOut {
     float4 position [[position]];
     float2 uv;
 };
 
 constexpr sampler linearClamp(coord::normalized, filter::linear, address::clamp_to_edge);
+constexpr sampler nearestClamp(coord::normalized, filter::nearest, address::clamp_to_edge);
 
 inline float4 toFloat(half4 v) {
     return float4(float(v.x), float(v.y), float(v.z), float(v.w));
@@ -71,6 +84,19 @@ inline float2 readRG(texture2d<half, access::read> tex, int x, int y, int w, int
     return float2(float(texel.x), float(texel.y));
 }
 
+/// Solid flag in x, obstacle velocity in yz. Out-of-range neighbors are fluid
+/// so the screen border is not a window.
+inline float4 readObstacle(texture2d<half, access::read> tex, int x, int y, int w, int h) {
+    if (x < 0 || y < 0 || x >= w || y >= h) {
+        return float4(0.0);
+    }
+    return toFloat(tex.read(uint2(uint(x), uint(y))));
+}
+
+inline bool solidAt(float4 obstacle) {
+    return obstacle.x > 0.5;
+}
+
 inline float2 clampSpeed(float2 vel, float cap) {
     float speed = length(vel);
     if (speed > cap) {
@@ -79,10 +105,41 @@ inline float2 clampSpeed(float2 vel, float cap) {
     return vel;
 }
 
+kernel void rasterObstacles(
+    texture2d<half, access::write> dest [[texture(0)]],
+    constant Obstacle *obstacles [[buffer(0)]],
+    constant ObstacleHeader &header [[buffer(1)]],
+    uint2 gid [[thread_position_in_grid]]
+) {
+    uint w = dest.get_width();
+    uint h = dest.get_height();
+    if (gid.x >= w || gid.y >= h) {
+        return;
+    }
+
+    float2 uv = (float2(gid) + 0.5) / float2(w, h);
+    float solid = 0.0;
+    float2 vel = float2(0.0);
+    uint count = min(header.count, 48u);
+    for (uint i = 0; i < count; ++i) {
+        float4 rect = obstacles[i].rect;
+        if (uv.x < rect.x || uv.y < rect.y || uv.x > rect.z || uv.y > rect.w) {
+            continue;
+        }
+        float2 size = max(rect.zw - rect.xy, float2(1e-4));
+        float2 local = saturate((uv - rect.xy) / size);
+        float4 motion = obstacles[i].motion;
+        vel = clampSpeed(motion.xy + motion.zw * local, 4.0);
+        solid = 1.0;
+    }
+    dest.write(half4(half(solid), half(vel.x), half(vel.y), 0.0h), gid);
+}
+
 kernel void advect(
     texture2d<half, access::sample> source [[texture(0)]],
     texture2d<half, access::write> dest [[texture(1)]],
     texture2d<half, access::sample> velocity [[texture(2)]],
+    texture2d<half, access::sample> obstacle [[texture(3)]],
     constant AdvectParams &params [[buffer(0)]],
     uint2 gid [[thread_position_in_grid]]
 ) {
@@ -95,15 +152,26 @@ kernel void advect(
     float2 size = float2(w, h);
     float2 texel = 1.0 / size;
     float2 uv = (float2(gid) + 0.5) * texel;
+    if (toFloat(obstacle.sample(nearestClamp, uv)).x > 0.5) {
+        dest.write(half4(0.0h), gid);
+        return;
+    }
     float2 vel = toFloat(velocity.sample(linearClamp, uv)).xy;
     float2 prevUV = clamp(uv - vel * params.dt, texel * 0.5, 1.0 - texel * 0.5);
-    float4 value = toFloat(source.sample(linearClamp, prevUV)) * params.dissipation;
+    // Don't pull the empty interior of a window out into the fluid.
+    float4 value;
+    if (toFloat(obstacle.sample(nearestClamp, prevUV)).x > 0.5) {
+        value = toFloat(source.sample(nearestClamp, uv)) * params.dissipation;
+    } else {
+        value = toFloat(source.sample(linearClamp, prevUV)) * params.dissipation;
+    }
     dest.write(toHalf(value), gid);
 }
 
 kernel void splat(
     texture2d<half, access::read> source [[texture(0)]],
     texture2d<half, access::write> dest [[texture(1)]],
+    texture2d<half, access::read> obstacle [[texture(2)]],
     constant Splat *splats [[buffer(0)]],
     constant SplatHeader &header [[buffer(1)]],
     uint2 gid [[thread_position_in_grid]]
@@ -111,6 +179,11 @@ kernel void splat(
     uint w = dest.get_width();
     uint h = dest.get_height();
     if (gid.x >= w || gid.y >= h) {
+        return;
+    }
+
+    if (solidAt(readObstacle(obstacle, int(gid.x), int(gid.y), int(w), int(h)))) {
+        dest.write(half4(0.0h), gid);
         return;
     }
 
@@ -168,6 +241,7 @@ kernel void confine(
     texture2d<half, access::read> velocity [[texture(0)]],
     texture2d<half, access::read> curlTex [[texture(1)]],
     texture2d<half, access::write> dest [[texture(2)]],
+    texture2d<half, access::read> obstacle [[texture(3)]],
     constant ForceParams &params [[buffer(0)]],
     uint2 gid [[thread_position_in_grid]]
 ) {
@@ -179,6 +253,10 @@ kernel void confine(
 
     int x = int(gid.x);
     int y = int(gid.y);
+    if (solidAt(readObstacle(obstacle, x, y, w, h))) {
+        dest.write(half4(0.0h), gid);
+        return;
+    }
     float curlL = abs(readR(curlTex, x - 1, y, w, h));
     float curlR = abs(readR(curlTex, x + 1, y, w, h));
     float curlB = abs(readR(curlTex, x, y - 1, w, h));
@@ -205,6 +283,7 @@ kernel void confine(
 kernel void divergence(
     texture2d<half, access::read> velocity [[texture(0)]],
     texture2d<half, access::write> dest [[texture(1)]],
+    texture2d<half, access::read> obstacle [[texture(2)]],
     uint2 gid [[thread_position_in_grid]]
 ) {
     int w = int(dest.get_width());
@@ -215,10 +294,20 @@ kernel void divergence(
 
     int x = int(gid.x);
     int y = int(gid.y);
-    float left = readRG(velocity, x - 1, y, w, h).x;
-    float right = readRG(velocity, x + 1, y, w, h).x;
-    float bottom = readRG(velocity, x, y - 1, w, h).y;
-    float top = readRG(velocity, x, y + 1, w, h).y;
+    if (solidAt(readObstacle(obstacle, x, y, w, h))) {
+        dest.write(half4(0.0h), gid);
+        return;
+    }
+    // Moving solids contribute their own velocity, so the front is a source
+    // of pressure and the wake is a sink.
+    float4 leftObs = readObstacle(obstacle, x - 1, y, w, h);
+    float4 rightObs = readObstacle(obstacle, x + 1, y, w, h);
+    float4 bottomObs = readObstacle(obstacle, x, y - 1, w, h);
+    float4 topObs = readObstacle(obstacle, x, y + 1, w, h);
+    float left = solidAt(leftObs) ? leftObs.y : readRG(velocity, x - 1, y, w, h).x;
+    float right = solidAt(rightObs) ? rightObs.y : readRG(velocity, x + 1, y, w, h).x;
+    float bottom = solidAt(bottomObs) ? bottomObs.z : readRG(velocity, x, y - 1, w, h).y;
+    float top = solidAt(topObs) ? topObs.z : readRG(velocity, x, y + 1, w, h).y;
     float div = 0.5 * ((right - left) + (top - bottom));
     dest.write(half4(half(div), 0.0h, 0.0h, 0.0h), gid);
 }
@@ -237,6 +326,7 @@ kernel void jacobi(
     texture2d<half, access::read> pressure [[texture(0)]],
     texture2d<half, access::read> divergenceTex [[texture(1)]],
     texture2d<half, access::write> dest [[texture(2)]],
+    texture2d<half, access::read> obstacle [[texture(3)]],
     uint2 gid [[thread_position_in_grid]]
 ) {
     int w = int(dest.get_width());
@@ -247,10 +337,16 @@ kernel void jacobi(
 
     int x = int(gid.x);
     int y = int(gid.y);
-    float left = readR(pressure, x - 1, y, w, h);
-    float right = readR(pressure, x + 1, y, w, h);
-    float bottom = readR(pressure, x, y - 1, w, h);
-    float top = readR(pressure, x, y + 1, w, h);
+    if (solidAt(readObstacle(obstacle, x, y, w, h))) {
+        dest.write(half4(0.0h), gid);
+        return;
+    }
+    // Neumann: a solid neighbor copies this cell so fluid does not flow through it.
+    float center = readR(pressure, x, y, w, h);
+    float left = solidAt(readObstacle(obstacle, x - 1, y, w, h)) ? center : readR(pressure, x - 1, y, w, h);
+    float right = solidAt(readObstacle(obstacle, x + 1, y, w, h)) ? center : readR(pressure, x + 1, y, w, h);
+    float bottom = solidAt(readObstacle(obstacle, x, y - 1, w, h)) ? center : readR(pressure, x, y - 1, w, h);
+    float top = solidAt(readObstacle(obstacle, x, y + 1, w, h)) ? center : readR(pressure, x, y + 1, w, h);
     float div = readR(divergenceTex, x, y, w, h);
     float solved = (left + right + bottom + top - div) * 0.25;
     dest.write(half4(half(solved), 0.0h, 0.0h, 0.0h), gid);
@@ -260,6 +356,7 @@ kernel void gradientSubtract(
     texture2d<half, access::read> velocity [[texture(0)]],
     texture2d<half, access::read> pressure [[texture(1)]],
     texture2d<half, access::write> dest [[texture(2)]],
+    texture2d<half, access::read> obstacle [[texture(3)]],
     uint2 gid [[thread_position_in_grid]]
 ) {
     int w = int(dest.get_width());
@@ -270,14 +367,34 @@ kernel void gradientSubtract(
 
     int x = int(gid.x);
     int y = int(gid.y);
+    if (solidAt(readObstacle(obstacle, x, y, w, h))) {
+        dest.write(half4(0.0h), gid);
+        return;
+    }
     float2 vel = float2(0.0);
     if (x > 0 && y > 0 && x + 1 < w && y + 1 < h) {
-        float left = readR(pressure, x - 1, y, w, h);
-        float right = readR(pressure, x + 1, y, w, h);
-        float bottom = readR(pressure, x, y - 1, w, h);
-        float top = readR(pressure, x, y + 1, w, h);
+        float center = readR(pressure, x, y, w, h);
+        float4 leftObs = readObstacle(obstacle, x - 1, y, w, h);
+        float4 rightObs = readObstacle(obstacle, x + 1, y, w, h);
+        float4 bottomObs = readObstacle(obstacle, x, y - 1, w, h);
+        float4 topObs = readObstacle(obstacle, x, y + 1, w, h);
+        float left = solidAt(leftObs) ? center : readR(pressure, x - 1, y, w, h);
+        float right = solidAt(rightObs) ? center : readR(pressure, x + 1, y, w, h);
+        float bottom = solidAt(bottomObs) ? center : readR(pressure, x, y - 1, w, h);
+        float top = solidAt(topObs) ? center : readR(pressure, x, y + 1, w, h);
         vel = readRG(velocity, x, y, w, h);
         vel -= float2(right - left, top - bottom) * 0.5;
+        // Fluid touching a window matches that window's normal speed.
+        float countX = 0.0;
+        float sumX = 0.0;
+        if (solidAt(leftObs)) { sumX += leftObs.y; countX += 1.0; }
+        if (solidAt(rightObs)) { sumX += rightObs.y; countX += 1.0; }
+        if (countX > 0.0) { vel.x = sumX / countX; }
+        float countY = 0.0;
+        float sumY = 0.0;
+        if (solidAt(bottomObs)) { sumY += bottomObs.z; countY += 1.0; }
+        if (solidAt(topObs)) { sumY += topObs.z; countY += 1.0; }
+        if (countY > 0.0) { vel.y = sumY / countY; }
         vel = clampSpeed(vel, 4.0);
     }
     dest.write(half4(half(vel.x), half(vel.y), 0.0h, 0.0h), gid);
@@ -304,9 +421,11 @@ vertex VSOut fullscreenVertex(uint vid [[vertex_id]]) {
 fragment float4 composeFragment(
     VSOut in [[stage_in]],
     texture2d<half> dye [[texture(0)]],
+    texture2d<half> obstacle [[texture(1)]],
     constant ComposeParams &params [[buffer(0)]]
 ) {
     float2 uv = clamp(in.uv, 0.0, 1.0);
+    float open = 1.0 - toFloat(obstacle.sample(linearClamp, uv)).x;
     float2 texel = 1.5 / float2(dye.get_width(), dye.get_height());
     float3 center = toFloat(dye.sample(linearClamp, uv)).xyz;
     float3 halo = (
@@ -315,7 +434,7 @@ fragment float4 composeFragment(
         toFloat(dye.sample(linearClamp, uv + float2(0.0, texel.y))).xyz +
         toFloat(dye.sample(linearClamp, uv - float2(0.0, texel.y))).xyz
     ) * 0.25;
-    float3 ink = center * 0.82 + halo * 0.38;
+    float3 ink = (center * 0.82 + halo * 0.38) * open;
     float3 mapped = ink / (1.0 + ink);
     float3 color = clamp(params.background.xyz + mapped, 0.0, 1.0);
     return float4(color, 1.0);

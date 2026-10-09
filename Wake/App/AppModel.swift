@@ -141,9 +141,13 @@ final class AppModel: NSObject {
 
         let fps = targetFPS(now: now)
         setFPS(fps)
-        let quiet = MotionSample(splatsByDisplay: [:], coveredDisplays: [], interacting: false)
+        var presented = sample
+        if leavingCoverage {
+            presented.splatsByDisplay = [:]
+            presented.interacting = false
+        }
         desktop?.render(
-            sample: leavingCoverage ? quiet : sample,
+            sample: presented,
             dt: dt,
             iterations: iterations(for: fps),
             drift: driftStrength(now: now),

@@ -38,6 +38,20 @@ struct ComposeParams {
     var background: SIMD4<Float>
 }
 
+/// One solid window in uv space. `rect` is min.xy, max.zw.
+/// `motion` is origin velocity xy and size velocity zw, both in uv/s.
+struct Obstacle {
+    var rect: SIMD4<Float>
+    var motion: SIMD4<Float>
+}
+
+struct ObstacleHeader {
+    var count: UInt32
+    var pad0: UInt32
+    var pad1: Float
+    var pad2: Float
+}
+
 enum SimLayout {
     /// Mismatched Swift and Metal layouts disable the wallpaper instead of trapping at launch.
     static func isCompatible() -> Bool {
@@ -47,5 +61,8 @@ enum SimLayout {
             && MemoryLayout<ForceParams>.stride == 16
             && MemoryLayout<SplatHeader>.stride == 16
             && MemoryLayout<ComposeParams>.stride == 16
+            && MemoryLayout<Obstacle>.stride == 32
+            && MemoryLayout<Obstacle>.alignment == 16
+            && MemoryLayout<ObstacleHeader>.stride == 16
     }
 }

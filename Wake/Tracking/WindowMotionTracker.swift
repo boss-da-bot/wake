@@ -6,6 +6,7 @@ struct MotionSample {
     var splatsByDisplay: [CGDirectDisplayID: [Splat]]
     var coveredDisplays: Set<CGDirectDisplayID>
     var interacting: Bool
+    var obstaclesByDisplay: [CGDirectDisplayID: [Obstacle]]
 }
 
 /// Diffs on-screen window bounds and turns the motion into fluid splats.
@@ -27,6 +28,8 @@ final class WindowMotionTracker {
         static let massChangeCount = 4
         static let forceGain: Float = 0.40
         static let minimumWindowSize: CGFloat = 48
+        static let maxObstacles = 48
+        static let maxObstacleSpeed: Float = 4
     }
 
     func rebase(now: CFTimeInterval) {
@@ -55,14 +58,29 @@ final class WindowMotionTracker {
             seeded = true
         }
 
-        guard seeded else {
-            return MotionSample(splatsByDisplay: [:], coveredDisplays: covered, interacting: false)
-        }
-
         let currentIDs = Set(windows.map(\.id))
         let appeared = windows.filter { previous[$0.id] == nil }
         let disappeared = previous.filter { !currentIDs.contains($0.key) }
-        let massChange = appeared.count >= Tuning.massChangeCount || disappeared.count >= Tuning.massChangeCount
+        let massChange = seeded
+            && (appeared.count >= Tuning.massChangeCount || disappeared.count >= Tuning.massChangeCount)
+        // A Space switch teleports windows. Keep them solid, but don't treat the
+        // jump as a body moving through the pool.
+        let obstacles = obstaclesByDisplay(
+            windows: windows,
+            screens: screens,
+            covered: covered,
+            dt: dt,
+            allowMotion: seeded && !massChange
+        )
+
+        guard seeded else {
+            return MotionSample(
+                splatsByDisplay: [:],
+                coveredDisplays: covered,
+                interacting: false,
+                obstaclesByDisplay: obstacles
+            )
+        }
 
         var splatsByDisplay: [CGDirectDisplayID: [Splat]] = [:]
         var interacting = false
@@ -132,8 +150,77 @@ final class WindowMotionTracker {
         return MotionSample(
             splatsByDisplay: splatsByDisplay,
             coveredDisplays: covered,
-            interacting: interacting
+            interacting: interacting,
+            obstaclesByDisplay: obstacles
         )
+    }
+
+    /// Every tracked window is a solid. Motion is the edge velocity so a resize
+    /// pushes on the edges that actually moved, not only the center.
+    private func obstaclesByDisplay(
+        windows: [ListedWindow],
+        screens: [NSScreen],
+        covered: Set<CGDirectDisplayID>,
+        dt: Float,
+        allowMotion: Bool
+    ) -> [CGDirectDisplayID: [Obstacle]] {
+        var result: [CGDirectDisplayID: [Obstacle]] = [:]
+        for screen in screens {
+            guard let displayID = ScreenGeometry.displayID(of: screen) else { continue }
+            if covered.contains(displayID) { continue }
+            var ranked: [(area: CGFloat, obstacle: Obstacle)] = []
+            ranked.reserveCapacity(windows.count)
+            for window in windows where window.frame.intersects(screen.frame) {
+                if ScreenGeometry.coversDesktop(window.frame, screen: screen) { continue }
+                guard let obstacle = makeObstacle(
+                    previous: previous[window.id],
+                    current: window.frame,
+                    screen: screen,
+                    dt: dt,
+                    allowMotion: allowMotion
+                ) else { continue }
+                ranked.append((window.frame.width * window.frame.height, obstacle))
+            }
+            if ranked.count > Tuning.maxObstacles {
+                ranked.sort { $0.area > $1.area }
+                ranked.removeLast(ranked.count - Tuning.maxObstacles)
+            }
+            result[displayID] = ranked.map(\.obstacle)
+        }
+        return result
+    }
+
+    private func makeObstacle(
+        previous: CGRect?,
+        current: CGRect,
+        screen: NSScreen,
+        dt: Float,
+        allowMotion: Bool
+    ) -> Obstacle? {
+        let frame = screen.frame
+        guard frame.width > 1, frame.height > 1 else { return nil }
+        let minX = Float((current.minX - frame.minX) / frame.width)
+        let minY = Float((current.minY - frame.minY) / frame.height)
+        let maxX = Float((current.maxX - frame.minX) / frame.width)
+        let maxY = Float((current.maxY - frame.minY) / frame.height)
+        guard maxX > minX, maxY > minY else { return nil }
+
+        var motion = SIMD4<Float>(0, 0, 0, 0)
+        if allowMotion, let previous, dt > 0 {
+            let invW = 1 / Float(frame.width)
+            let invH = 1 / Float(frame.height)
+            motion = SIMD4(
+                clampObstacle((Float(current.minX - previous.minX) * invW) / dt),
+                clampObstacle((Float(current.minY - previous.minY) * invH) / dt),
+                clampObstacle((Float(current.width - previous.width) * invW) / dt),
+                clampObstacle((Float(current.height - previous.height) * invH) / dt)
+            )
+        }
+        return Obstacle(rect: SIMD4(minX, minY, maxX, maxY), motion: motion)
+    }
+
+    private func clampObstacle(_ value: Float) -> Float {
+        min(Tuning.maxObstacleSpeed, max(-Tuning.maxObstacleSpeed, value))
     }
 
     private func coveredDisplays(windows: [ListedWindow], screens: [NSScreen]) -> Set<CGDirectDisplayID> {
@@ -201,9 +288,11 @@ final class WindowMotionTracker {
             let response = pow(min(speedUV, 3.5 as Float), 0.72 as Float)
             let velocityDirection = SIMD2(edge.3.x / screenWidth, edge.3.y / screenHeight) / max(speedUV, 1e-4)
             let normalUV = normalize(SIMD2(edge.2.x / screenWidth, edge.2.y / screenHeight))
-            var impulse = velocityDirection * response * Tuning.forceGain * intensity * (0.30 + 0.70 * lead)
-            impulse += normalUV * response * 0.22 * intensity * side
-            let dye = min(Float(0.9), response * Float(0.55)) * intensity * (Float(0.25) + Float(0.90) * trail + Float(0.45) * side)
+            // The obstacle mask owns the hole and the inflow. Splats only sharpen
+            // the bow and the side shear, and they do not paint the vacated wake.
+            var impulse = velocityDirection * response * Tuning.forceGain * intensity * (0.45 * lead + 0.20 * trail)
+            impulse += normalUV * response * 0.12 * intensity * side
+            let dye = min(Float(0.35), response * Float(0.18)) * intensity * (Float(0.25) * lead + Float(0.40) * side)
             let radius = 0.022 + min(0.02, response * 0.012)
             let offset = SIMD2(
                 edge.2.x * Float(Tuning.outsidePadding / frame.width),
@@ -220,29 +309,6 @@ final class WindowMotionTracker {
                 ) + offset
                 guard position.x > -0.08, position.x < 1.08, position.y > -0.08, position.y < 1.08 else { continue }
                 splats.append(Splat(position: position, radius: radius, impulse: impulse, color: color, amount: dye))
-            }
-        }
-
-        if travel > Float(70) {
-            let steps = min(6, max(2, Int(travel / Float(110))))
-            let centerSpeed = hypot(dOrigin.x / screenWidth, dOrigin.y / screenHeight) / dt
-            let response = pow(min(centerSpeed, 3.5 as Float), 0.72 as Float)
-            let direction = SIMD2(dOrigin.x / screenWidth, dOrigin.y / screenHeight)
-            let directionLength = max(length(direction), 1e-4)
-            let backward = -direction / directionLength
-            for step in 1...steps {
-                let t = CGFloat(step) / CGFloat(steps)
-                let x = previous.midX + (current.midX - previous.midX) * t
-                let y = previous.midY + (current.midY - previous.midY) * t
-                var position = SIMD2(
-                    Float((x - frame.minX) / frame.width),
-                    Float((y - frame.minY) / frame.height)
-                )
-                position += backward * 0.02
-                guard position.x > -0.05, position.x < 1.05, position.y > -0.05, position.y < 1.05 else { continue }
-                let impulse = (direction / directionLength) * response * 0.16 * intensity
-                let dye = min(Float(0.75), response * Float(0.48)) * intensity
-                splats.append(Splat(position: position, radius: 0.04, impulse: impulse, color: color, amount: dye))
             }
         }
 

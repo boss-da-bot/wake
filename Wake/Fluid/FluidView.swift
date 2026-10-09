@@ -9,6 +9,7 @@ final class FluidView: MTKView, MTKViewDelegate {
 
     private struct Pending {
         var splats: [Splat]
+        var obstacles: [Obstacle]
         var dt: Float
         var iterations: Int
         var drift: Float
@@ -82,9 +83,23 @@ final class FluidView: MTKView, MTKViewDelegate {
         clearColor = MTLClearColor(red: Double(color.x), green: Double(color.y), blue: Double(color.z), alpha: 1)
     }
 
-    func render(splats: [Splat], dt: Float, iterations: Int, drift: Float, background: SIMD3<Float>) {
+    func render(
+        splats: [Splat],
+        obstacles: [Obstacle],
+        dt: Float,
+        iterations: Int,
+        drift: Float,
+        background: SIMD3<Float>
+    ) {
         guard field != nil else { return }
-        pending = Pending(splats: splats, dt: dt, iterations: iterations, drift: drift, background: background)
+        pending = Pending(
+            splats: splats,
+            obstacles: obstacles,
+            dt: dt,
+            iterations: iterations,
+            drift: drift,
+            background: background
+        )
         draw()
     }
 
@@ -93,6 +108,7 @@ final class FluidView: MTKView, MTKViewDelegate {
         field.stepAndPresent(
             in: view,
             splats: pending.splats,
+            obstacles: pending.obstacles,
             dt: pending.dt,
             iterations: pending.iterations,
             drift: pending.drift,
