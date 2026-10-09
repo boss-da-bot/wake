@@ -371,15 +371,9 @@ final class WindowMotionTracker {
     }
 
     private static func cgRect(_ value: Any?) -> CGRect? {
-        let dictionary: CFDictionary?
-        if let value = value as? CFDictionary {
-            dictionary = value
-        } else if let value = value as? NSDictionary {
-            dictionary = value
-        } else {
-            dictionary = nil
-        }
-        guard let dictionary else { return nil }
+        // NSDictionary is the bridged form of the bounds dictionary. A conditional
+        // cast to CFDictionary is rejected by the compiler because it always succeeds.
+        guard let dictionary = value as? NSDictionary else { return nil }
         var rect = CGRect.null
         guard CGRectMakeWithDictionaryRepresentation(dictionary, &rect), !rect.isNull, !rect.isInfinite else {
             return nil
