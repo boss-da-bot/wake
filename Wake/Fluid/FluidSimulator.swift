@@ -18,7 +18,10 @@ final class FluidGPU {
     static let maxDimension = 320
 
     init?() {
-        SimLayout.assertAligned()
+        guard SimLayout.isCompatible() else {
+            Log.app.error("Fluid parameter layout does not match the Metal shaders")
+            return nil
+        }
         guard let device = MTLCreateSystemDefaultDevice(),
               let queue = device.makeCommandQueue(),
               let library = device.makeDefaultLibrary() else {

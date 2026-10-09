@@ -3,7 +3,7 @@ import MetalKit
 import simd
 
 final class FluidView: MTKView, MTKViewDelegate {
-    private let gpu: FluidGPU
+    private let gpu: FluidGPU?
     private var field: FluidField?
     private var pending: Pending?
 
@@ -15,10 +15,55 @@ final class FluidView: MTKView, MTKViewDelegate {
         var background: SIMD3<Float>
     }
 
-    init(gpu: FluidGPU, screen: NSScreen) {
-        self.gpu = gpu
-        field = gpu.makeField(for: screen.frame.size)
-        super.init(frame: screen.frame, device: gpu.device)
+    private struct Seed {
+        let gpu: FluidGPU
+        let screenSize: CGSize
+    }
+
+    private static var seeds: [Seed] = []
+
+    convenience init(gpu: FluidGPU, screen: NSScreen) {
+        Self.seeds.append(Seed(gpu: gpu, screenSize: screen.frame.size))
+        defer { _ = Self.seeds.popLast() }
+        self.init(frame: screen.frame, device: gpu.device)
+    }
+
+    /// Designated initializer. Implemented so a superclass callback cannot land
+    /// in a Swift-synthesized trap. `init(frame:device:)` calls `NSView`'s
+    /// `init(frame:)` on super, not on self, so this does not recurse.
+    override init(frame frameRect: CGRect, device: MTLDevice?) {
+        let resolved = Self.resolve(frame: frameRect)
+        gpu = resolved.gpu
+        field = resolved.field
+        super.init(frame: frameRect, device: resolved.gpu?.device ?? device)
+        if resolved.gpu != nil {
+            configure()
+        }
+    }
+
+    override init(frame frameRect: NSRect) {
+        let resolved = Self.resolve(frame: frameRect)
+        gpu = resolved.gpu
+        field = resolved.field
+        super.init(frame: frameRect, device: resolved.gpu?.device)
+        if resolved.gpu != nil {
+            configure()
+        }
+    }
+
+    required init?(coder: NSCoder) {
+        return nil
+    }
+
+    private static func resolve(frame: CGRect) -> (gpu: FluidGPU?, field: FluidField?) {
+        if let seed = seeds.last {
+            return (seed.gpu, seed.gpu.makeField(for: seed.screenSize))
+        }
+        guard let gpu = FluidGPU() else { return (nil, nil) }
+        return (gpu, gpu.makeField(for: frame.size))
+    }
+
+    private func configure() {
         delegate = self
         isPaused = true
         enableSetNeedsDisplay = false
@@ -28,12 +73,8 @@ final class FluidView: MTKView, MTKViewDelegate {
         preferredFramesPerSecond = 60
     }
 
-    @available(*, unavailable)
-    required init(coder: NSCoder) {
-        fatalError("Wake wallpaper views are created in code")
-    }
-
     func updateGrid(for screenSize: CGSize) {
+        guard let gpu else { return }
         let grid = FluidGPU.gridSize(for: screenSize)
         if grid.width != field?.gridSize.width || grid.height != field?.gridSize.height {
             field = gpu.makeField(for: screenSize)

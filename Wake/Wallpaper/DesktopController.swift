@@ -18,7 +18,8 @@ final class DesktopController {
             if let existing = windows[displayID] {
                 existing.updateFrame(to: screen)
                 existing.applyBackground(palette.background)
-            } else if let window = DesktopWindow(screen: screen, gpu: gpu, displayID: displayID) {
+            } else {
+                let window = DesktopWindow(screen: screen, gpu: gpu, displayID: displayID)
                 window.applyBackground(palette.background)
                 windows[displayID] = window
             }
@@ -57,6 +58,6 @@ final class DesktopController {
 
 private extension DesktopWindow {
     func render(splats: [Splat], dt: Float, iterations: Int, drift: Float, background: SIMD3<Float>) {
-        fluidView.render(splats: splats, dt: dt, iterations: iterations, drift: drift, background: background)
+        fluidView?.render(splats: splats, dt: dt, iterations: iterations, drift: drift, background: background)
     }
 }

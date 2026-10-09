@@ -39,12 +39,13 @@ struct ComposeParams {
 }
 
 enum SimLayout {
-    static func assertAligned() {
-        precondition(MemoryLayout<Splat>.stride == 48, "Splat stride must match the Metal struct")
-        precondition(MemoryLayout<Splat>.alignment == 16, "Splat alignment must match the Metal struct")
-        precondition(MemoryLayout<AdvectParams>.stride == 16, "AdvectParams stride must match the Metal struct")
-        precondition(MemoryLayout<ForceParams>.stride == 16, "ForceParams stride must match the Metal struct")
-        precondition(MemoryLayout<SplatHeader>.stride == 16, "SplatHeader stride must match the Metal struct")
-        precondition(MemoryLayout<ComposeParams>.stride == 16, "ComposeParams stride must match the Metal struct")
+    /// Mismatched Swift and Metal layouts disable the wallpaper instead of trapping at launch.
+    static func isCompatible() -> Bool {
+        MemoryLayout<Splat>.stride == 48
+            && MemoryLayout<Splat>.alignment == 16
+            && MemoryLayout<AdvectParams>.stride == 16
+            && MemoryLayout<ForceParams>.stride == 16
+            && MemoryLayout<SplatHeader>.stride == 16
+            && MemoryLayout<ComposeParams>.stride == 16
     }
 }
