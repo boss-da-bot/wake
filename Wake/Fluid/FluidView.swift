@@ -31,6 +31,7 @@ final class FluidView: MTKView, MTKViewDelegate {
     /// Designated initializer. Implemented so a superclass callback cannot land
     /// in a Swift-synthesized trap. `init(frame:device:)` calls `NSView`'s
     /// `init(frame:)` on super, not on self, so this does not recurse.
+    /// `init(frame:)` stays the inherited convenience and forwards here.
     override init(frame frameRect: CGRect, device: MTLDevice?) {
         let resolved = Self.resolve(frame: frameRect)
         gpu = resolved.gpu
@@ -41,18 +42,14 @@ final class FluidView: MTKView, MTKViewDelegate {
         }
     }
 
-    override init(frame frameRect: NSRect) {
-        let resolved = Self.resolve(frame: frameRect)
+    required init(coder: NSCoder) {
+        let resolved = Self.resolve(frame: .zero)
         gpu = resolved.gpu
         field = resolved.field
-        super.init(frame: frameRect, device: resolved.gpu?.device)
+        super.init(coder: coder)
         if resolved.gpu != nil {
             configure()
         }
-    }
-
-    required init?(coder: NSCoder) {
-        return nil
     }
 
     private static func resolve(frame: CGRect) -> (gpu: FluidGPU?, field: FluidField?) {
