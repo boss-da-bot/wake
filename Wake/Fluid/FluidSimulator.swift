@@ -68,7 +68,7 @@ final class FluidGPU {
 
     func makeField(for screenSize: CGSize) -> FluidField? {
         let grids = Self.grids(for: screenSize)
-        return FluidField(gpu: self, velocity: grids.velocity, dye: grids.dye)
+        return FluidField(gpu: self, velocityGrid: grids.velocity, dyeGrid: grids.dye)
     }
 
     struct Grids {
@@ -145,19 +145,19 @@ final class FluidField {
         static let confinement: Float = 10
     }
 
-    init?(gpu: FluidGPU, velocity: (width: Int, height: Int), dye: (width: Int, height: Int)) {
+    init?(gpu: FluidGPU, velocityGrid: (width: Int, height: Int), dyeGrid: (width: Int, height: Int)) {
         self.gpu = gpu
-        velocitySize = velocity
-        dyeSize = dye
-        guard let velocity0 = Self.makeTexture(device: gpu.device, width: velocity.width, height: velocity.height, label: "velocity0"),
-              let velocity1 = Self.makeTexture(device: gpu.device, width: velocity.width, height: velocity.height, label: "velocity1"),
-              let dye0 = Self.makeTexture(device: gpu.device, width: dye.width, height: dye.height, label: "dye0"),
-              let dye1 = Self.makeTexture(device: gpu.device, width: dye.width, height: dye.height, label: "dye1"),
-              let pressure0 = Self.makeTexture(device: gpu.device, width: velocity.width, height: velocity.height, label: "pressure0"),
-              let pressure1 = Self.makeTexture(device: gpu.device, width: velocity.width, height: velocity.height, label: "pressure1"),
-              let divergenceTex = Self.makeTexture(device: gpu.device, width: velocity.width, height: velocity.height, label: "divergence"),
-              let curlTex = Self.makeTexture(device: gpu.device, width: velocity.width, height: velocity.height, label: "curl"),
-              let obstacleTex = Self.makeTexture(device: gpu.device, width: dye.width, height: dye.height, label: "obstacles") else {
+        velocitySize = velocityGrid
+        dyeSize = dyeGrid
+        guard let velocity0 = Self.makeTexture(device: gpu.device, width: velocityGrid.width, height: velocityGrid.height, label: "velocity0"),
+              let velocity1 = Self.makeTexture(device: gpu.device, width: velocityGrid.width, height: velocityGrid.height, label: "velocity1"),
+              let dye0 = Self.makeTexture(device: gpu.device, width: dyeGrid.width, height: dyeGrid.height, label: "dye0"),
+              let dye1 = Self.makeTexture(device: gpu.device, width: dyeGrid.width, height: dyeGrid.height, label: "dye1"),
+              let pressure0 = Self.makeTexture(device: gpu.device, width: velocityGrid.width, height: velocityGrid.height, label: "pressure0"),
+              let pressure1 = Self.makeTexture(device: gpu.device, width: velocityGrid.width, height: velocityGrid.height, label: "pressure1"),
+              let divergenceTex = Self.makeTexture(device: gpu.device, width: velocityGrid.width, height: velocityGrid.height, label: "divergence"),
+              let curlTex = Self.makeTexture(device: gpu.device, width: velocityGrid.width, height: velocityGrid.height, label: "curl"),
+              let obstacleTex = Self.makeTexture(device: gpu.device, width: dyeGrid.width, height: dyeGrid.height, label: "obstacles") else {
             return nil
         }
         velocity = [velocity0, velocity1]
@@ -166,7 +166,7 @@ final class FluidField {
         self.divergenceTex = divergenceTex
         self.curlTex = curlTex
         self.obstacleTex = obstacleTex
-        bloomRNG = SplitMix(seed: UInt64(dye.width) &+ UInt64(dye.height) &+ 1)
+        bloomRNG = SplitMix(seed: UInt64(dyeGrid.width) &+ UInt64(dyeGrid.height) &+ 1)
         clearAll()
     }
 
@@ -311,7 +311,7 @@ final class FluidField {
         if list.isEmpty {
             list = [Obstacle(rect: SIMD4<Float>(0, 0, 0, 0), motion: SIMD4<Float>(0, 0, 0, 0))]
         }
-        var header = ObstacleHeader(count: UInt32(capped.count), pad0: 0, pad1: 0, pad2: 0)
+        let header = ObstacleHeader(count: UInt32(capped.count), pad0: 0, pad1: 0, pad2: 0)
         dispatch(commandBuffer, "rasterObstacles", width: dyeSize.width, height: dyeSize.height) { encoder in
             encoder.setTexture(obstacleTex, index: 0)
             list.withUnsafeBytes { raw in
@@ -350,8 +350,8 @@ final class FluidField {
         dest: MTLTexture,
         blooms: [InkBloom]
     ) {
-        var list = blooms
-        var header = BloomHeader(
+        let list = blooms
+        let header = BloomHeader(
             count: UInt32(list.count),
             aspect: Float(dyeSize.width) / Float(max(dyeSize.height, 1)),
             pad0: 0,
