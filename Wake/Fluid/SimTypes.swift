@@ -52,6 +52,31 @@ struct ObstacleHeader {
     var pad2: Float
 }
 
+struct SeedParams {
+    var color0: SIMD4<Float>
+    var color1: SIMD4<Float>
+    var color2: SIMD4<Float>
+    var density: Float
+    var phase: Float
+    var pad0: Float
+    var pad1: Float
+}
+
+/// One living ink patch. `color.w` is dye added this frame. `fade.x` is the
+/// center multiplier for a patch that is dissolving (1 leaves dye alone).
+struct InkBloom {
+    var posRadius: SIMD4<Float>
+    var color: SIMD4<Float>
+    var fade: SIMD4<Float>
+}
+
+struct BloomHeader {
+    var count: UInt32
+    var aspect: Float
+    var pad0: Float
+    var pad1: Float
+}
+
 enum SimLayout {
     /// Mismatched Swift and Metal layouts disable the wallpaper instead of trapping at launch.
     static func isCompatible() -> Bool {
@@ -64,5 +89,10 @@ enum SimLayout {
             && MemoryLayout<Obstacle>.stride == 32
             && MemoryLayout<Obstacle>.alignment == 16
             && MemoryLayout<ObstacleHeader>.stride == 16
+            && MemoryLayout<SeedParams>.stride == 64
+            && MemoryLayout<SeedParams>.alignment == 16
+            && MemoryLayout<InkBloom>.stride == 48
+            && MemoryLayout<InkBloom>.alignment == 16
+            && MemoryLayout<BloomHeader>.stride == 16
     }
 }

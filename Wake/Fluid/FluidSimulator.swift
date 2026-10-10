@@ -33,7 +33,8 @@ final class FluidGPU {
 
         let names = [
             "advect", "splat", "curlField", "confine", "divergence",
-            "clearField", "jacobi", "gradientSubtract", "rasterObstacles"
+            "clearField", "jacobi", "gradientSubtract", "rasterObstacles",
+            "seedDye", "bloomInk"
         ]
         var compiled: [String: MTLComputePipelineState] = [:]
         compiled.reserveCapacity(names.count)
@@ -106,10 +107,14 @@ final class FluidField {
     private var velocityIndex = 0
     private var dyeIndex = 0
     private var time: Float = 0
+    private var dyeSeeded = false
+    private var sinceBloom = Float(0)
+    private var bloomRNG: SplitMix
+    private var blooms: [LivingBloom] = []
 
     private enum Tuning {
         static let velocityDecay: Float = 0.85
-        static let dyeDecay: Float = 0.12
+        static let dyeDecay: Float = 0.022
         static let confinement: Float = 10
     }
 
@@ -133,6 +138,7 @@ final class FluidField {
         self.divergenceTex = divergenceTex
         self.curlTex = curlTex
         self.obstacleTex = obstacleTex
+        bloomRNG = SplitMix(seed: UInt64(width) &+ UInt64(height) &+ 1)
         clearAll()
     }
 
@@ -145,12 +151,18 @@ final class FluidField {
         dt rawDT: Float,
         iterations: Int,
         drift: Float,
-        background: SIMD3<Float>
+        background: SIMD3<Float>,
+        inks: [SIMD3<Float>],
+        intensity: Float
     ) {
         guard let commandBuffer = gpu.queue.makeCommandBuffer() else { return }
         commandBuffer.label = "WakeFrame"
         let dt = min(max(rawDT, Float(0)), Float(0.05))
         rasterObstacles(commandBuffer, obstacles: obstacles)
+        if !dyeSeeded {
+            seedDye(commandBuffer, inks: inks, intensity: intensity)
+            dyeSeeded = true
+        }
         if dt > 0 {
             time += dt
             let velocityDissipation = exp(-Tuning.velocityDecay * dt)
@@ -178,7 +190,10 @@ final class FluidField {
             if !limited.isEmpty {
                 applySplat(commandBuffer, source: velocity[velocityIndex], dest: velocity[1 - velocityIndex], splats: limited, mode: 0)
                 velocityIndex = 1 - velocityIndex
-                applySplat(commandBuffer, source: dye[dyeIndex], dest: dye[1 - dyeIndex], splats: limited, mode: 1)
+            }
+            let bloomSplats = advanceBlooms(dt: dt, intensity: intensity, inks: inks)
+            if !bloomSplats.isEmpty {
+                applyBlooms(commandBuffer, source: dye[dyeIndex], dest: dye[1 - dyeIndex], blooms: bloomSplats)
                 dyeIndex = 1 - dyeIndex
             }
 
@@ -263,6 +278,138 @@ final class FluidField {
                 }
             }
         }
+    }
+
+    private func seedDye(_ commandBuffer: MTLCommandBuffer, inks: [SIMD3<Float>], intensity: Float) {
+        let gain = Self.inkGain(intensity)
+        var params = SeedParams(
+            color0: Self.inkColor(inks, index: 0),
+            color1: Self.inkColor(inks, index: 1),
+            color2: Self.inkColor(inks, index: 2),
+            density: gain,
+            phase: bloomRNG.unit() * 6.28318,
+            pad0: 0,
+            pad1: 0
+        )
+        dispatch(commandBuffer, "seedDye", params: &params) { encoder in
+            encoder.setTexture(dye[dyeIndex], index: 0)
+            encoder.setTexture(obstacleTex, index: 1)
+        }
+    }
+
+    private func applyBlooms(
+        _ commandBuffer: MTLCommandBuffer,
+        source: MTLTexture,
+        dest: MTLTexture,
+        blooms: [InkBloom]
+    ) {
+        var list = blooms
+        var header = BloomHeader(
+            count: UInt32(list.count),
+            aspect: Float(gridSize.width) / Float(max(gridSize.height, 1)),
+            pad0: 0,
+            pad1: 0
+        )
+        dispatch(commandBuffer, "bloomInk") { encoder in
+            encoder.setTexture(source, index: 0)
+            encoder.setTexture(dest, index: 1)
+            encoder.setTexture(obstacleTex, index: 2)
+            list.withUnsafeBytes { raw in
+                if let base = raw.baseAddress, raw.count > 0 {
+                    encoder.setBytes(base, length: raw.count, index: 0)
+                }
+            }
+            withUnsafeBytes(of: header) { raw in
+                if let base = raw.baseAddress {
+                    encoder.setBytes(base, length: MemoryLayout<BloomHeader>.stride, index: 1)
+                }
+            }
+        }
+    }
+
+    /// A few soft patches, born one at a time. Fade-in adds dye over several
+    /// seconds, the hold tops up what global decay removes, and fade-out
+    /// dissolves only that patch.
+    private func advanceBlooms(dt: Float, intensity: Float, inks: [SIMD3<Float>]) -> [InkBloom] {
+        let clamped = min(1, max(0, intensity))
+        let target = 3 + Int((clamped * 5).rounded())
+        if blooms.isEmpty {
+            for _ in 0..<target {
+                let fraction = bloomRNG.unit() * 0.9
+                blooms.append(makeBloom(inks: inks, ageFraction: fraction))
+            }
+            sinceBloom = 0
+        }
+
+        sinceBloom += dt
+        blooms = blooms.compactMap { bloom in
+            var bloom = bloom
+            bloom.age += dt
+            if bloom.age >= bloom.fadeIn + bloom.hold + bloom.fadeOut {
+                return nil
+            }
+            return bloom
+        }
+        let interval = 16 - 10 * clamped
+        if blooms.count < target, sinceBloom >= interval {
+            blooms.append(makeBloom(inks: inks, ageFraction: 0))
+            sinceBloom = 0
+        }
+        if blooms.count > 8 {
+            blooms.removeFirst(blooms.count - 8)
+        }
+        return blooms.map { gpuBloom($0, dt: dt, intensity: clamped) }
+    }
+
+    private func makeBloom(inks: [SIMD3<Float>], ageFraction: Float) -> LivingBloom {
+        let fadeIn = 5 + bloomRNG.unit() * 3
+        let hold = 12 + bloomRNG.unit() * 10
+        let fadeOut = 9 + bloomRNG.unit() * 6
+        let packed = Self.inkColor(inks, index: Int(bloomRNG.unit() * 3))
+        return LivingBloom(
+            position: SIMD2(0.18 + bloomRNG.unit() * 0.64, 0.18 + bloomRNG.unit() * 0.64),
+            radius: 0.18 + bloomRNG.unit() * 0.14,
+            color: SIMD3(packed.x, packed.y, packed.z),
+            peak: 0.5 + bloomRNG.unit() * 0.35,
+            age: ageFraction * (fadeIn + hold),
+            fadeIn: fadeIn,
+            hold: hold,
+            fadeOut: fadeOut
+        )
+    }
+
+    private func gpuBloom(_ bloom: LivingBloom, dt: Float, intensity: Float) -> InkBloom {
+        let gain = Self.inkGain(intensity)
+        let holdEnd = bloom.fadeIn + bloom.hold
+        let addRate: Float
+        let sustain: Float
+        if bloom.age < bloom.fadeIn {
+            let t = bloom.age / max(bloom.fadeIn, 0.001)
+            let shaped = t * t * (3 - 2 * t)
+            addRate = bloom.peak * gain * 2 * shaped / max(bloom.fadeIn, 0.001)
+            sustain = 1
+        } else if bloom.age < holdEnd {
+            addRate = bloom.peak * gain * Tuning.dyeDecay
+            sustain = 1
+        } else {
+            addRate = 0
+            let rate = 3 / max(bloom.fadeOut, 0.001)
+            sustain = exp(-rate * dt)
+        }
+        return InkBloom(
+            posRadius: SIMD4(bloom.position.x, bloom.position.y, bloom.radius, 0),
+            color: SIMD4(bloom.color.x, bloom.color.y, bloom.color.z, addRate * dt),
+            fade: SIMD4(sustain, 0, 0, 0)
+        )
+    }
+
+    private static func inkGain(_ intensity: Float) -> Float {
+        0.4 + 0.6 * min(1, max(0, intensity))
+    }
+
+    private static func inkColor(_ inks: [SIMD3<Float>], index: Int) -> SIMD4<Float> {
+        let color = inks.isEmpty ? SIMD3<Float>(0.72, 0.74, 0.78) : inks[index % inks.count]
+        return SIMD4(color.x, color.y, color.z, 1)
     }
 
     private func advect(
@@ -373,5 +520,36 @@ final class FluidField {
         let texture = device.makeTexture(descriptor: descriptor)
         texture?.label = label
         return texture
+    }
+}
+
+private struct LivingBloom {
+    var position: SIMD2<Float>
+    var radius: Float
+    var color: SIMD3<Float>
+    var peak: Float
+    var age: Float
+    var fadeIn: Float
+    var hold: Float
+    var fadeOut: Float
+}
+
+private struct SplitMix {
+    var state: UInt64
+
+    init(seed: UInt64) {
+        state = seed == 0 ? 0xA24BAED4963EE407 : seed
+    }
+
+    mutating func next() -> UInt64 {
+        state &+= 0x9E3779B97F4A7C15
+        var z = state
+        z = (z ^ (z >> 30)) &* 0xBF58476D1CE4E5B9
+        z = (z ^ (z >> 27)) &* 0x94D049BB133111EB
+        return z ^ (z >> 31)
+    }
+
+    mutating func unit() -> Float {
+        Float(next() >> 40) / Float(1 << 24)
     }
 }

@@ -288,11 +288,9 @@ final class WindowMotionTracker {
             let response = pow(min(speedUV, 3.5 as Float), 0.72 as Float)
             let velocityDirection = SIMD2(edge.3.x / screenWidth, edge.3.y / screenHeight) / max(speedUV, 1e-4)
             let normalUV = normalize(SIMD2(edge.2.x / screenWidth, edge.2.y / screenHeight))
-            // The obstacle mask owns the hole and the inflow. Splats only sharpen
-            // the bow and the side shear, and they do not paint the vacated wake.
+            // Motion only displaces ink that is already there.
             var impulse = velocityDirection * response * Tuning.forceGain * intensity * (0.45 * lead + 0.20 * trail)
             impulse += normalUV * response * 0.12 * intensity * side
-            let dye = min(Float(0.35), response * Float(0.18)) * intensity * (Float(0.25) * lead + Float(0.40) * side)
             let radius = 0.022 + min(0.02, response * 0.012)
             let offset = SIMD2(
                 edge.2.x * Float(Tuning.outsidePadding / frame.width),
@@ -308,7 +306,7 @@ final class WindowMotionTracker {
                     Float((y - frame.minY) / frame.height)
                 ) + offset
                 guard position.x > -0.08, position.x < 1.08, position.y > -0.08, position.y < 1.08 else { continue }
-                splats.append(Splat(position: position, radius: radius, impulse: impulse, color: color, amount: dye))
+                splats.append(Splat(position: position, radius: radius, impulse: impulse, color: color, amount: 0))
             }
         }
 
@@ -345,7 +343,7 @@ final class WindowMotionTracker {
                 radius: 0.046,
                 impulse: impulse,
                 color: color,
-                amount: 0.52 * intensity
+                amount: 0
             ))
         }
         return splats
@@ -379,7 +377,7 @@ final class WindowMotionTracker {
             radius: 0.018,
             impulse: impulse,
             color: color,
-            amount: min(Float(0.16), speed * Float(0.05)) * intensity
+            amount: 0
         )
         return (displayID, splat)
     }

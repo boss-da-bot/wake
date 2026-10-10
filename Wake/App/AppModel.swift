@@ -151,7 +151,8 @@ final class AppModel: NSObject {
             dt: dt,
             iterations: iterations(for: fps),
             drift: driftStrength(now: now),
-            palette: palette
+            palette: palette,
+            intensity: Float(intensity)
         )
     }
 

@@ -52,6 +52,29 @@ struct ObstacleHeader {
     float pad2;
 };
 
+struct SeedParams {
+    float4 color0;
+    float4 color1;
+    float4 color2;
+    float density;
+    float phase;
+    float pad0;
+    float pad1;
+};
+
+struct InkBloom {
+    float4 posRadius;
+    float4 color;
+    float4 fade;
+};
+
+struct BloomHeader {
+    uint count;
+    float aspect;
+    float pad0;
+    float pad1;
+};
+
 struct VSOut {
     float4 position [[position]];
     float2 uv;
@@ -398,6 +421,74 @@ kernel void gradientSubtract(
         vel = clampSpeed(vel, 4.0);
     }
     dest.write(half4(half(vel.x), half(vel.y), 0.0h, 0.0h), gid);
+}
+
+kernel void seedDye(
+    texture2d<half, access::write> dest [[texture(0)]],
+    texture2d<half, access::read> obstacle [[texture(1)]],
+    constant SeedParams &params [[buffer(0)]],
+    uint2 gid [[thread_position_in_grid]]
+) {
+    uint w = dest.get_width();
+    uint h = dest.get_height();
+    if (gid.x >= w || gid.y >= h) {
+        return;
+    }
+    if (solidAt(readObstacle(obstacle, int(gid.x), int(gid.y), int(w), int(h)))) {
+        dest.write(half4(0.0h), gid);
+        return;
+    }
+
+    float2 uv = (float2(gid) + 0.5) / float2(w, h);
+    float n1 = sin(uv.x * 6.2 + params.phase) * cos(uv.y * 5.1 + 0.4);
+    float n2 = sin(uv.x * 3.3 + 1.7) * sin(uv.y * 4.4 + params.phase * 0.37);
+    float n3 = cos(uv.x * 8.5 - uv.y * 6.4 + 2.1);
+    float field = n1 * 0.52 + n2 * 0.33 + n3 * 0.15;
+    float density = saturate(0.62 + 0.28 * field) * params.density;
+    float w0 = saturate(0.55 + 0.45 * n1);
+    float w1 = saturate(0.55 + 0.45 * n2);
+    float w2 = saturate(0.55 + 0.45 * n3);
+    float weight = w0 + w1 + w2 + 1e-3;
+    float3 color = (
+        params.color0.xyz * w0 +
+        params.color1.xyz * w1 +
+        params.color2.xyz * w2
+    ) / weight;
+    dest.write(toHalf(float4(color * density, 0.0)), gid);
+}
+
+kernel void bloomInk(
+    texture2d<half, access::read> source [[texture(0)]],
+    texture2d<half, access::write> dest [[texture(1)]],
+    texture2d<half, access::read> obstacle [[texture(2)]],
+    constant InkBloom *blooms [[buffer(0)]],
+    constant BloomHeader &header [[buffer(1)]],
+    uint2 gid [[thread_position_in_grid]]
+) {
+    uint w = dest.get_width();
+    uint h = dest.get_height();
+    if (gid.x >= w || gid.y >= h) {
+        return;
+    }
+    if (solidAt(readObstacle(obstacle, int(gid.x), int(gid.y), int(w), int(h)))) {
+        dest.write(half4(0.0h), gid);
+        return;
+    }
+
+    float2 uv = (float2(gid) + 0.5) / float2(w, h);
+    float4 value = toFloat(source.read(gid));
+    uint count = min(header.count, 8u);
+    for (uint i = 0; i < count; ++i) {
+        float2 delta = uv - blooms[i].posRadius.xy;
+        delta.x *= header.aspect;
+        float radius = max(blooms[i].posRadius.z, 1e-4);
+        float cover = exp(-dot(delta, delta) / (radius * radius));
+        value.xyz += blooms[i].color.xyz * blooms[i].color.w * cover;
+        float sustain = mix(1.0, blooms[i].fade.x, cover);
+        value.xyz *= sustain;
+    }
+    value.xyz = clamp(value.xyz, float3(0.0), float3(1.35));
+    dest.write(toHalf(value), gid);
 }
 
 vertex VSOut fullscreenVertex(uint vid [[vertex_id]]) {

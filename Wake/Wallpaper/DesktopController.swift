@@ -35,7 +35,8 @@ final class DesktopController {
         dt: Float,
         iterations: Int,
         drift: Float,
-        palette: Palette
+        palette: Palette,
+        intensity: Float
     ) {
         for (displayID, window) in windows {
             if sample.coveredDisplays.contains(displayID) { continue }
@@ -45,7 +46,9 @@ final class DesktopController {
                 dt: dt,
                 iterations: iterations,
                 drift: drift,
-                background: palette.background
+                background: palette.background,
+                inks: palette.inks,
+                intensity: intensity
             )
         }
     }
@@ -64,7 +67,9 @@ private extension DesktopWindow {
         dt: Float,
         iterations: Int,
         drift: Float,
-        background: SIMD3<Float>
+        background: SIMD3<Float>,
+        inks: [SIMD3<Float>],
+        intensity: Float
     ) {
         fluidView?.render(
             splats: splats,
@@ -72,7 +77,9 @@ private extension DesktopWindow {
             dt: dt,
             iterations: iterations,
             drift: drift,
-            background: background
+            background: background,
+            inks: inks,
+            intensity: intensity
         )
     }
 }

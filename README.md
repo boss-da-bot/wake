@@ -2,7 +2,7 @@
 
 Ink that moves when your windows do.
 
-Wake is a free, open-source menu bar app for macOS. It draws a dark fluid simulation behind your windows, under the desktop icons. A window is a solid in that pool: nothing is under it, and dragging it away leaves clear background that the ink flows back into. Open, close, or resize a window and the fluid answers. Leave it alone and the color drifts, then settles.
+Wake is a free, open-source menu bar app for macOS. It draws a dark fluid simulation behind your windows, under the desktop icons. The desktop starts full of ink. Patches bloom and fade on their own, slowly and not all at once. A window is a solid in that pool: dragging it only stirs the ink that is already there.
 
 ![Wake placeholder](docs/demo.gif)
 
@@ -37,7 +37,7 @@ open /Applications/Wake.app
 - **Launch at Login**
 - **Quit**
 
-Drag a window across the desktop to stir the ink. The cursor leaves a lighter trace. Nothing here is configurable beyond that menu, on purpose.
+Drag a window across the desktop to stir the ink. Intensity sets how dense the ink is and how often a new patch appears. Nothing here is configurable beyond that menu, on purpose.
 
 ## How it works
 
@@ -45,7 +45,7 @@ Wake is a [stable fluids](https://www.dgp.toronto.edu/public_user/stam/reality/R
 
 That window sits just under the desktop icons, on every display and Space, and it ignores clicks. It is the wallpaper, not an overlay.
 
-The part other fluid wallpapers skip: each frame Wake reads **on-screen window bounds** with `CGWindowListCopyWindowInfo` and diffs them. The rectangle is a solid, so the area a window just left starts empty and neighboring ink is drawn back in. The leading edge pushes fluid ahead; the trailing edge leaves a wake. A window that appears or disappears still leaves a radial puff. The pointer is sampled with `NSEvent.mouseLocation`, which does not need Accessibility access.
+The part other fluid wallpapers skip: each frame Wake reads **on-screen window bounds** with `CGWindowListCopyWindowInfo` and diffs them. The rectangle is a solid, so the area a window just left starts empty and neighboring ink is drawn back in. The leading edge pushes fluid ahead; the trailing edge leaves a wake. Opening, closing, resizing, and the pointer only add velocity, never new ink. The pointer is sampled with `NSEvent.mouseLocation`, which does not need Accessibility access.
 
 The grid's long side is 320 cells. Presentation is capped at 60 fps, drops when the desktop has been still, and drops further on battery, Low Power Mode, or when the machine is thermally constrained. If a window covers a display (fullscreen or zoomed), that display pauses.
 

@@ -14,6 +14,8 @@ final class FluidView: MTKView, MTKViewDelegate {
         var iterations: Int
         var drift: Float
         var background: SIMD3<Float>
+        var inks: [SIMD3<Float>]
+        var intensity: Float
     }
 
     private struct Seed {
@@ -89,7 +91,9 @@ final class FluidView: MTKView, MTKViewDelegate {
         dt: Float,
         iterations: Int,
         drift: Float,
-        background: SIMD3<Float>
+        background: SIMD3<Float>,
+        inks: [SIMD3<Float>],
+        intensity: Float
     ) {
         guard field != nil else { return }
         pending = Pending(
@@ -98,7 +102,9 @@ final class FluidView: MTKView, MTKViewDelegate {
             dt: dt,
             iterations: iterations,
             drift: drift,
-            background: background
+            background: background,
+            inks: inks,
+            intensity: intensity
         )
         draw()
     }
@@ -112,7 +118,9 @@ final class FluidView: MTKView, MTKViewDelegate {
             dt: pending.dt,
             iterations: pending.iterations,
             drift: pending.drift,
-            background: pending.background
+            background: pending.background,
+            inks: pending.inks,
+            intensity: pending.intensity
         )
     }
 
