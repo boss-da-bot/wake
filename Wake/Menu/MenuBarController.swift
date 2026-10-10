@@ -5,6 +5,7 @@ final class MenuBarController: NSObject, NSMenuDelegate {
     private weak var model: AppModel?
     private let statusItem = NSStatusBar.system.statusItem(withLength: NSStatusItem.squareLength)
     private let pauseItem = NSMenuItem()
+    private let statsItem = NSMenuItem(title: "Measuring…", action: nil, keyEquivalent: "")
     private let loginItem = NSMenuItem()
     private let intensitySlider = NSSlider(value: 0.65, minValue: 0, maxValue: 1, target: nil, action: nil)
     private let percentField = NSTextField(labelWithString: "65%")
@@ -30,6 +31,10 @@ final class MenuBarController: NSObject, NSMenuDelegate {
         let hint = NSMenuItem(title: "Drag a window to stir the ink", action: nil, keyEquivalent: "")
         hint.isEnabled = false
         menu.addItem(hint)
+
+        statsItem.isEnabled = false
+        statsItem.isHidden = true
+        menu.addItem(statsItem)
 
         if !model.metalAvailable {
             let unavailable = NSMenuItem(title: "Metal is unavailable", action: nil, keyEquivalent: "")
@@ -99,12 +104,20 @@ final class MenuBarController: NSObject, NSMenuDelegate {
     }
 
     func menuWillOpen(_ menu: NSMenu) {
+        if NSEvent.modifierFlags.contains(.option) {
+            model?.toggleFrameStats()
+        }
         refresh()
     }
 
-    private func refresh() {
+    func refresh() {
         guard let model else { return }
         applyPaused(model.isPaused)
+        let showingStats = model.showsFrameStats
+        statsItem.isHidden = !showingStats
+        if showingStats {
+            statsItem.title = model.frameStatsLine.isEmpty ? "Measuring…" : model.frameStatsLine
+        }
         for item in paletteItems {
             let id = item.representedObject as? String
             item.state = id == model.palette.id ? .on : .off

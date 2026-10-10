@@ -13,6 +13,14 @@ final class AppModel: NSObject {
     private var wasFullyCovered = false
     private var displayAsleep = false
     private var lastTick: CFTimeInterval = 0
+    private var heldSample: MotionSample?
+    private var lastPoll: CFTimeInterval = 0
+    private var statsFrames = 0
+    private var statsGPU = 0.0
+    private var statsGPUCount = 0
+    private var statsStart: CFTimeInterval = 0
+    private(set) var showsFrameStats = false
+    private(set) var frameStatsLine = ""
 
     private(set) var palette: Palette
     private(set) var intensity: Double
@@ -60,8 +68,17 @@ final class AppModel: NSObject {
             return
         }
         lastTick = CACurrentMediaTime()
+        heldSample = nil
         tracker.rebase(now: lastTick)
         setFPS(60)
+    }
+
+    func toggleFrameStats() {
+        showsFrameStats.toggle()
+        if !showsFrameStats {
+            frameStatsLine = ""
+        }
+        menu.refresh()
     }
 
     func setPalette(_ palette: Palette) {
@@ -111,7 +128,7 @@ final class AppModel: NSObject {
         }
         power.refreshIfNeeded()
         let now = CACurrentMediaTime()
-        let dt = Float(min(max(now - lastTick, 0), 0.05))
+        let dt = Float(min(max(now - lastTick, 0), 0.25))
         lastTick = now
 
         if displayAsleep || isPaused {
@@ -120,16 +137,11 @@ final class AppModel: NSObject {
         }
 
         let screens = NSScreen.screens
-        let sample = tracker.sample(
-            now: now,
-            screens: screens,
-            palette: palette,
-            intensity: Float(intensity)
-        )
+        let sample = motionSample(now: now, screens: screens)
         let fullyCovered = Self.coversAll(screens, sample: sample)
         if fullyCovered {
             wasFullyCovered = true
-            setFPS(2)
+            setFPS(1)
             return
         }
 
@@ -137,23 +149,53 @@ final class AppModel: NSObject {
         wasFullyCovered = false
         if leavingCoverage {
             tracker.rebase(now: now)
+            lastPoll = now
         }
 
-        let fps = targetFPS(now: now)
+        let pace = pace(at: now)
+        let fps = targetFPS(pace)
         setFPS(fps)
         var presented = sample
         if leavingCoverage {
             presented.splatsByDisplay = [:]
             presented.interacting = false
         }
-        desktop?.render(
+        let gpuMilliseconds = desktop?.render(
             sample: presented,
             dt: dt,
-            iterations: iterations(for: fps),
-            drift: driftStrength(now: now),
+            iterations: iterations(for: pace),
+            drift: driftStrength(pace),
             palette: palette,
             intensity: Float(intensity)
+        ) ?? 0
+        noteFrame(gpuMilliseconds: gpuMilliseconds, now: now)
+    }
+
+    /// Window-list polls are the idle CPU cost, so they are not tied to the
+    /// render rate. Between polls the last solids stay put and splats are
+    /// not applied again.
+    private func motionSample(now: CFTimeInterval, screens: [NSScreen]) -> MotionSample {
+        let interval = pollInterval(pace(at: now))
+        if heldSample == nil || now - lastPoll >= interval {
+            let fresh = tracker.sample(
+                now: now,
+                screens: screens,
+                palette: palette,
+                intensity: Float(intensity)
+            )
+            heldSample = fresh
+            lastPoll = now
+            return fresh
+        }
+        var held = heldSample ?? MotionSample(
+            splatsByDisplay: [:],
+            coveredDisplays: [],
+            interacting: false,
+            obstaclesByDisplay: [:]
         )
+        held.splatsByDisplay = [:]
+        held.interacting = false
+        return held
     }
 
     private static func coversAll(_ screens: [NSScreen], sample: MotionSample) -> Bool {
@@ -164,38 +206,89 @@ final class AppModel: NSObject {
         }
     }
 
-    private func targetFPS(now: CFTimeInterval) -> Int {
-        let since = now - tracker.lastInteractionTime
-        let cap: Int
-        if power.isThermalLimited || power.isLowPowerMode {
-            cap = 15
-        } else if power.isOnBattery {
-            cap = 30
-        } else {
-            cap = 60
-        }
-        let desired: Int
-        if since < 1.5 {
-            desired = 60
-        } else if since < 8 {
-            desired = 24
-        } else {
-            desired = 10
-        }
-        return min(desired, cap)
+    private enum Pace {
+        case active
+        case settling
+        case idle
     }
 
-    private func iterations(for fps: Int) -> Int {
-        if power.prefersReducedRate { return 8 }
-        if fps <= 10 { return 6 }
-        return 16
+    private func pace(at now: CFTimeInterval) -> Pace {
+        let since = now - tracker.lastInteractionTime
+        if since < 1.2 { return .active }
+        if since < 5 { return .settling }
+        return .idle
     }
 
-    private func driftStrength(now: CFTimeInterval) -> Float {
-        let since = now - tracker.lastInteractionTime
-        if since > 8 { return 0.07 }
-        if since > 1.5 { return 0.03 }
-        return 0.012
+    private func pollInterval(_ pace: Pace) -> CFTimeInterval {
+        switch pace {
+        case .active: return 0
+        case .settling: return 0.25
+        case .idle: return 0.5
+        }
+    }
+
+    private func targetFPS(_ pace: Pace) -> Int {
+        let reduced = power.isThermalLimited || power.isLowPowerMode
+        switch pace {
+        case .active:
+            if reduced { return 20 }
+            if power.isOnBattery { return 30 }
+            return 60
+        case .settling:
+            if reduced { return 8 }
+            if power.isOnBattery { return 12 }
+            return 18
+        case .idle:
+            if reduced { return 4 }
+            if power.isOnBattery { return 6 }
+            return 8
+        }
+    }
+
+    private func iterations(for pace: Pace) -> Int {
+        let reduced = power.isThermalLimited || power.isLowPowerMode
+        switch pace {
+        case .active:
+            return reduced ? 10 : 16
+        case .settling:
+            return reduced ? 6 : 8
+        case .idle:
+            return 4
+        }
+    }
+
+    private func driftStrength(_ pace: Pace) -> Float {
+        switch pace {
+        case .active: return 0.012
+        case .settling: return 0.03
+        case .idle: return 0.07
+        }
+    }
+
+    private func noteFrame(gpuMilliseconds: Double, now: CFTimeInterval) {
+        if statsStart == 0 { statsStart = now }
+        statsFrames += 1
+        if gpuMilliseconds > 0 {
+            statsGPU += gpuMilliseconds
+            statsGPUCount += 1
+        }
+        let elapsed = now - statsStart
+        guard elapsed >= 2 else { return }
+        let fps = Double(statsFrames) / elapsed
+        let gpu = statsGPUCount > 0 ? statsGPU / Double(statsGPUCount) : 0
+        if gpu > 0 {
+            frameStatsLine = String(format: "%.0f fps · %.1f ms GPU", fps, gpu)
+        } else {
+            frameStatsLine = String(format: "%.0f fps", fps)
+        }
+        if showsFrameStats {
+            Log.app.info("\(self.frameStatsLine, privacy: .public)")
+            menu.refresh()
+        }
+        statsFrames = 0
+        statsGPU = 0
+        statsGPUCount = 0
+        statsStart = now
     }
 
     private func setFPS(_ fps: Int) {
@@ -206,6 +299,7 @@ final class AppModel: NSObject {
 
     @objc private func screensChanged() {
         desktop?.sync(with: NSScreen.screens, palette: palette)
+        heldSample = nil
         tracker.rebase(now: CACurrentMediaTime())
     }
 
@@ -221,6 +315,7 @@ final class AppModel: NSObject {
     @objc private func screensDidWake() {
         displayAsleep = false
         lastTick = CACurrentMediaTime()
+        heldSample = nil
         desktop?.sync(with: NSScreen.screens, palette: palette)
         tracker.rebase(now: lastTick)
         setFPS(30)

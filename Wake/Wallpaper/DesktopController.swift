@@ -37,10 +37,11 @@ final class DesktopController {
         drift: Float,
         palette: Palette,
         intensity: Float
-    ) {
+    ) -> Double {
+        var gpuMilliseconds = 0.0
         for (displayID, window) in windows {
             if sample.coveredDisplays.contains(displayID) { continue }
-            window.render(
+            gpuMilliseconds += window.render(
                 splats: sample.splatsByDisplay[displayID] ?? [],
                 obstacles: sample.obstaclesByDisplay[displayID] ?? [],
                 dt: dt,
@@ -51,6 +52,7 @@ final class DesktopController {
                 intensity: intensity
             )
         }
+        return gpuMilliseconds
     }
 
     func apply(palette: Palette) {
@@ -70,8 +72,8 @@ private extension DesktopWindow {
         background: SIMD3<Float>,
         inks: [SIMD3<Float>],
         intensity: Float
-    ) {
-        fluidView?.render(
+    ) -> Double {
+        return fluidView?.render(
             splats: splats,
             obstacles: obstacles,
             dt: dt,
@@ -80,6 +82,6 @@ private extension DesktopWindow {
             background: background,
             inks: inks,
             intensity: intensity
-        )
+        ) ?? 0
     }
 }

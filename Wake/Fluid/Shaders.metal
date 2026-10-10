@@ -1,7 +1,8 @@
 #include <metal_stdlib>
 using namespace metal;
 
-// 2D stable fluids on a low-resolution grid.
+// 2D stable fluids. Velocity stays on a coarse grid; dye and the window
+// mask are finer and sampled smoothly when drawn.
 // Jos Stam, "Stable Fluids", SIGGRAPH 1999.
 // Vorticity confinement: Fedkiw, Stam, Jensen, "Visual Simulation of Smoke", SIGGRAPH 2001.
 //
@@ -116,8 +117,52 @@ inline float4 readObstacle(texture2d<half, access::read> tex, int x, int y, int 
     return toFloat(tex.read(uint2(uint(x), uint(y))));
 }
 
+/// Obstacle mask may be finer than the velocity grid. Sample the cell center
+/// in uv so a high-resolution mask still covers the right low-resolution cell.
+/// Out-of-range neighbors are fluid, so the screen border is not a window.
+inline float4 sampleObstacleCell(texture2d<half, access::sample> tex, int x, int y, int w, int h) {
+    if (x < 0 || y < 0 || x >= w || y >= h) {
+        return float4(0.0);
+    }
+    float2 uv = (float2(x, y) + 0.5) / float2(w, h);
+    return toFloat(tex.sample(nearestClamp, uv));
+}
+
 inline bool solidAt(float4 obstacle) {
     return obstacle.x > 0.5;
+}
+
+/// Separable cubic B-spline, packed into four bilinear taps.
+inline float4 cubicBSpline(float v) {
+    float4 n = float4(1.0, 2.0, 3.0, 4.0) - v;
+    float4 s = n * n * n;
+    float x = s.x;
+    float y = s.y - 4.0 * s.x;
+    float z = s.z - 4.0 * s.y + 6.0 * s.x;
+    float w = 6.0 - x - y - z;
+    return float4(x, y, z, w) * (1.0 / 6.0);
+}
+
+inline float4 sampleBicubic(texture2d<half, access::sample> tex, float2 uv) {
+    float2 size = float2(tex.get_width(), tex.get_height());
+    float2 inv = 1.0 / size;
+    float2 coord = uv * size - 0.5;
+    float2 f = fract(coord);
+    coord -= f;
+    float4 x = cubicBSpline(f.x);
+    float4 y = cubicBSpline(f.y);
+    float4 c = coord.xxyy + float2(-0.5, 1.5).xxyy;
+    float4 s = float4(x.x + x.y, x.z + x.w, y.x + y.y, y.z + y.w);
+    float4 safe = max(s, float4(1e-4));
+    float4 offset = c + float4(x.y, x.w, y.y, y.w) / safe;
+    offset *= inv.xxyy;
+    float4 s0 = toFloat(tex.sample(linearClamp, offset.xz));
+    float4 s1 = toFloat(tex.sample(linearClamp, offset.yz));
+    float4 s2 = toFloat(tex.sample(linearClamp, offset.xw));
+    float4 s3 = toFloat(tex.sample(linearClamp, offset.yw));
+    float sx = safe.x / (safe.x + safe.y);
+    float sy = safe.z / (safe.z + safe.w);
+    return mix(mix(s3, s2, sx), mix(s1, s0, sx), sy);
 }
 
 inline float2 clampSpeed(float2 vel, float cap) {
@@ -179,7 +224,10 @@ kernel void advect(
         dest.write(half4(0.0h), gid);
         return;
     }
-    float2 vel = toFloat(velocity.sample(linearClamp, uv)).xy;
+    // Dye is finer than velocity. Bicubic keeps that upsample from looking stepped.
+    float2 vel = (velocity.get_width() == w)
+        ? toFloat(velocity.sample(linearClamp, uv)).xy
+        : sampleBicubic(velocity, uv).xy;
     float2 prevUV = clamp(uv - vel * params.dt, texel * 0.5, 1.0 - texel * 0.5);
     // Don't pull the empty interior of a window out into the fluid.
     float4 value;
@@ -194,7 +242,7 @@ kernel void advect(
 kernel void splat(
     texture2d<half, access::read> source [[texture(0)]],
     texture2d<half, access::write> dest [[texture(1)]],
-    texture2d<half, access::read> obstacle [[texture(2)]],
+    texture2d<half, access::sample> obstacle [[texture(2)]],
     constant Splat *splats [[buffer(0)]],
     constant SplatHeader &header [[buffer(1)]],
     uint2 gid [[thread_position_in_grid]]
@@ -205,7 +253,7 @@ kernel void splat(
         return;
     }
 
-    if (solidAt(readObstacle(obstacle, int(gid.x), int(gid.y), int(w), int(h)))) {
+    if (solidAt(sampleObstacleCell(obstacle, int(gid.x), int(gid.y), int(w), int(h)))) {
         dest.write(half4(0.0h), gid);
         return;
     }
@@ -264,7 +312,7 @@ kernel void confine(
     texture2d<half, access::read> velocity [[texture(0)]],
     texture2d<half, access::read> curlTex [[texture(1)]],
     texture2d<half, access::write> dest [[texture(2)]],
-    texture2d<half, access::read> obstacle [[texture(3)]],
+    texture2d<half, access::sample> obstacle [[texture(3)]],
     constant ForceParams &params [[buffer(0)]],
     uint2 gid [[thread_position_in_grid]]
 ) {
@@ -276,7 +324,7 @@ kernel void confine(
 
     int x = int(gid.x);
     int y = int(gid.y);
-    if (solidAt(readObstacle(obstacle, x, y, w, h))) {
+    if (solidAt(sampleObstacleCell(obstacle, x, y, w, h))) {
         dest.write(half4(0.0h), gid);
         return;
     }
@@ -306,7 +354,7 @@ kernel void confine(
 kernel void divergence(
     texture2d<half, access::read> velocity [[texture(0)]],
     texture2d<half, access::write> dest [[texture(1)]],
-    texture2d<half, access::read> obstacle [[texture(2)]],
+    texture2d<half, access::sample> obstacle [[texture(2)]],
     uint2 gid [[thread_position_in_grid]]
 ) {
     int w = int(dest.get_width());
@@ -317,16 +365,16 @@ kernel void divergence(
 
     int x = int(gid.x);
     int y = int(gid.y);
-    if (solidAt(readObstacle(obstacle, x, y, w, h))) {
+    if (solidAt(sampleObstacleCell(obstacle, x, y, w, h))) {
         dest.write(half4(0.0h), gid);
         return;
     }
     // Moving solids contribute their own velocity, so the front is a source
     // of pressure and the wake is a sink.
-    float4 leftObs = readObstacle(obstacle, x - 1, y, w, h);
-    float4 rightObs = readObstacle(obstacle, x + 1, y, w, h);
-    float4 bottomObs = readObstacle(obstacle, x, y - 1, w, h);
-    float4 topObs = readObstacle(obstacle, x, y + 1, w, h);
+    float4 leftObs = sampleObstacleCell(obstacle, x - 1, y, w, h);
+    float4 rightObs = sampleObstacleCell(obstacle, x + 1, y, w, h);
+    float4 bottomObs = sampleObstacleCell(obstacle, x, y - 1, w, h);
+    float4 topObs = sampleObstacleCell(obstacle, x, y + 1, w, h);
     float left = solidAt(leftObs) ? leftObs.y : readRG(velocity, x - 1, y, w, h).x;
     float right = solidAt(rightObs) ? rightObs.y : readRG(velocity, x + 1, y, w, h).x;
     float bottom = solidAt(bottomObs) ? bottomObs.z : readRG(velocity, x, y - 1, w, h).y;
@@ -349,7 +397,7 @@ kernel void jacobi(
     texture2d<half, access::read> pressure [[texture(0)]],
     texture2d<half, access::read> divergenceTex [[texture(1)]],
     texture2d<half, access::write> dest [[texture(2)]],
-    texture2d<half, access::read> obstacle [[texture(3)]],
+    texture2d<half, access::sample> obstacle [[texture(3)]],
     uint2 gid [[thread_position_in_grid]]
 ) {
     int w = int(dest.get_width());
@@ -360,16 +408,16 @@ kernel void jacobi(
 
     int x = int(gid.x);
     int y = int(gid.y);
-    if (solidAt(readObstacle(obstacle, x, y, w, h))) {
+    if (solidAt(sampleObstacleCell(obstacle, x, y, w, h))) {
         dest.write(half4(0.0h), gid);
         return;
     }
     // Neumann: a solid neighbor copies this cell so fluid does not flow through it.
     float center = readR(pressure, x, y, w, h);
-    float left = solidAt(readObstacle(obstacle, x - 1, y, w, h)) ? center : readR(pressure, x - 1, y, w, h);
-    float right = solidAt(readObstacle(obstacle, x + 1, y, w, h)) ? center : readR(pressure, x + 1, y, w, h);
-    float bottom = solidAt(readObstacle(obstacle, x, y - 1, w, h)) ? center : readR(pressure, x, y - 1, w, h);
-    float top = solidAt(readObstacle(obstacle, x, y + 1, w, h)) ? center : readR(pressure, x, y + 1, w, h);
+    float left = solidAt(sampleObstacleCell(obstacle, x - 1, y, w, h)) ? center : readR(pressure, x - 1, y, w, h);
+    float right = solidAt(sampleObstacleCell(obstacle, x + 1, y, w, h)) ? center : readR(pressure, x + 1, y, w, h);
+    float bottom = solidAt(sampleObstacleCell(obstacle, x, y - 1, w, h)) ? center : readR(pressure, x, y - 1, w, h);
+    float top = solidAt(sampleObstacleCell(obstacle, x, y + 1, w, h)) ? center : readR(pressure, x, y + 1, w, h);
     float div = readR(divergenceTex, x, y, w, h);
     float solved = (left + right + bottom + top - div) * 0.25;
     dest.write(half4(half(solved), 0.0h, 0.0h, 0.0h), gid);
@@ -379,7 +427,7 @@ kernel void gradientSubtract(
     texture2d<half, access::read> velocity [[texture(0)]],
     texture2d<half, access::read> pressure [[texture(1)]],
     texture2d<half, access::write> dest [[texture(2)]],
-    texture2d<half, access::read> obstacle [[texture(3)]],
+    texture2d<half, access::sample> obstacle [[texture(3)]],
     uint2 gid [[thread_position_in_grid]]
 ) {
     int w = int(dest.get_width());
@@ -390,17 +438,17 @@ kernel void gradientSubtract(
 
     int x = int(gid.x);
     int y = int(gid.y);
-    if (solidAt(readObstacle(obstacle, x, y, w, h))) {
+    if (solidAt(sampleObstacleCell(obstacle, x, y, w, h))) {
         dest.write(half4(0.0h), gid);
         return;
     }
     float2 vel = float2(0.0);
     if (x > 0 && y > 0 && x + 1 < w && y + 1 < h) {
         float center = readR(pressure, x, y, w, h);
-        float4 leftObs = readObstacle(obstacle, x - 1, y, w, h);
-        float4 rightObs = readObstacle(obstacle, x + 1, y, w, h);
-        float4 bottomObs = readObstacle(obstacle, x, y - 1, w, h);
-        float4 topObs = readObstacle(obstacle, x, y + 1, w, h);
+        float4 leftObs = sampleObstacleCell(obstacle, x - 1, y, w, h);
+        float4 rightObs = sampleObstacleCell(obstacle, x + 1, y, w, h);
+        float4 bottomObs = sampleObstacleCell(obstacle, x, y - 1, w, h);
+        float4 topObs = sampleObstacleCell(obstacle, x, y + 1, w, h);
         float left = solidAt(leftObs) ? center : readR(pressure, x - 1, y, w, h);
         float right = solidAt(rightObs) ? center : readR(pressure, x + 1, y, w, h);
         float bottom = solidAt(bottomObs) ? center : readR(pressure, x, y - 1, w, h);
@@ -517,16 +565,12 @@ fragment float4 composeFragment(
 ) {
     float2 uv = clamp(in.uv, 0.0, 1.0);
     float open = 1.0 - toFloat(obstacle.sample(linearClamp, uv)).x;
-    float2 texel = 1.5 / float2(dye.get_width(), dye.get_height());
-    float3 center = toFloat(dye.sample(linearClamp, uv)).xyz;
-    float3 halo = (
-        toFloat(dye.sample(linearClamp, uv + float2(texel.x, 0.0))).xyz +
-        toFloat(dye.sample(linearClamp, uv - float2(texel.x, 0.0))).xyz +
-        toFloat(dye.sample(linearClamp, uv + float2(0.0, texel.y))).xyz +
-        toFloat(dye.sample(linearClamp, uv - float2(0.0, texel.y))).xyz
-    ) * 0.25;
-    float3 ink = (center * 0.82 + halo * 0.38) * open;
+    // 1.2 keeps the density the old 5-tap halo produced (0.82 center + 0.38 blur).
+    float3 ink = sampleBicubic(dye, uv).xyz * 1.2 * open;
     float3 mapped = ink / (1.0 + ink);
-    float3 color = clamp(params.background.xyz + mapped, 0.0, 1.0);
-    return float4(color, 1.0);
+    float3 color = params.background.xyz + mapped;
+    // Interleaved gradient noise, ±1/2 of an 8-bit step, breaks up banding.
+    float noise = fract(52.9829189 * fract(dot(in.position.xy, float2(0.06711056, 0.00583715))));
+    color += (noise - 0.5) * (1.0 / 255.0);
+    return float4(clamp(color, 0.0, 1.0), 1.0);
 }

@@ -6,6 +6,7 @@ final class FluidView: MTKView, MTKViewDelegate {
     private let gpu: FluidGPU?
     private var field: FluidField?
     private var pending: Pending?
+    private var lastPresentedGPUMilliseconds: Double = 0
 
     private struct Pending {
         var splats: [Splat]
@@ -75,8 +76,8 @@ final class FluidView: MTKView, MTKViewDelegate {
 
     func updateGrid(for screenSize: CGSize) {
         guard let gpu else { return }
-        let grid = FluidGPU.gridSize(for: screenSize)
-        if grid.width != field?.gridSize.width || grid.height != field?.gridSize.height {
+        let grids = FluidGPU.grids(for: screenSize)
+        if grids.velocity.width != field?.velocitySize.width || grids.velocity.height != field?.velocitySize.height {
             field = gpu.makeField(for: screenSize)
         }
     }
@@ -94,8 +95,8 @@ final class FluidView: MTKView, MTKViewDelegate {
         background: SIMD3<Float>,
         inks: [SIMD3<Float>],
         intensity: Float
-    ) {
-        guard field != nil else { return }
+    ) -> Double {
+        guard field != nil else { return 0 }
         pending = Pending(
             splats: splats,
             obstacles: obstacles,
@@ -107,11 +108,12 @@ final class FluidView: MTKView, MTKViewDelegate {
             intensity: intensity
         )
         draw()
+        return lastPresentedGPUMilliseconds
     }
 
     func draw(in view: MTKView) {
         guard let pending, let field else { return }
-        field.stepAndPresent(
+        lastPresentedGPUMilliseconds = field.stepAndPresent(
             in: view,
             splats: pending.splats,
             obstacles: pending.obstacles,
