@@ -1,0 +1,459 @@
+// !$*UTF8*$!
+{
+	archiveVersion = 1;
+	classes = {
+	};
+	objectVersion = 56;
+	objects = {
+
+/* Begin PBXBuildFile section */
+		D10000000000000000000001 /* WakeMain.swift in Sources */ = {isa = PBXBuildFile; fileRef = C10000000000000000000001 /* WakeMain.swift */; };
+		D10000000000000000000002 /* AppModel.swift in Sources */ = {isa = PBXBuildFile; fileRef = C10000000000000000000002 /* AppModel.swift */; };
+		D10000000000000000000003 /* MenuBarController.swift in Sources */ = {isa = PBXBuildFile; fileRef = C10000000000000000000003 /* MenuBarController.swift */; };
+		D10000000000000000000004 /* DesktopWindow.swift in Sources */ = {isa = PBXBuildFile; fileRef = C10000000000000000000004 /* DesktopWindow.swift */; };
+		D10000000000000000000005 /* DesktopController.swift in Sources */ = {isa = PBXBuildFile; fileRef = C10000000000000000000005 /* DesktopController.swift */; };
+		D10000000000000000000006 /* Shaders.metal in Sources */ = {isa = PBXBuildFile; fileRef = C10000000000000000000006 /* Shaders.metal */; };
+		D10000000000000000000007 /* SimTypes.swift in Sources */ = {isa = PBXBuildFile; fileRef = C10000000000000000000007 /* SimTypes.swift */; };
+		D10000000000000000000008 /* FluidSimulator.swift in Sources */ = {isa = PBXBuildFile; fileRef = C10000000000000000000008 /* FluidSimulator.swift */; };
+		D10000000000000000000009 /* FluidView.swift in Sources */ = {isa = PBXBuildFile; fileRef = C10000000000000000000009 /* FluidView.swift */; };
+		D1000000000000000000000A /* ScreenGeometry.swift in Sources */ = {isa = PBXBuildFile; fileRef = C1000000000000000000000A /* ScreenGeometry.swift */; };
+		D1000000000000000000000B /* WindowMotionTracker.swift in Sources */ = {isa = PBXBuildFile; fileRef = C1000000000000000000000B /* WindowMotionTracker.swift */; };
+		D1000000000000000000000C /* Palette.swift in Sources */ = {isa = PBXBuildFile; fileRef = C1000000000000000000000C /* Palette.swift */; };
+		D1000000000000000000000D /* SettingsStore.swift in Sources */ = {isa = PBXBuildFile; fileRef = C1000000000000000000000D /* SettingsStore.swift */; };
+		D1000000000000000000000E /* PowerMonitor.swift in Sources */ = {isa = PBXBuildFile; fileRef = C1000000000000000000000E /* PowerMonitor.swift */; };
+		D1000000000000000000000F /* Assets.xcassets in Resources */ = {isa = PBXBuildFile; fileRef = C1000000000000000000000F /* Assets.xcassets */; };
+/* End PBXBuildFile section */
+
+/* Begin PBXFileReference section */
+		A10000000000000000000006 /* Wake.app */ = {isa = PBXFileReference; explicitFileType = wrapper.application; includeInIndex = 0; path = Wake.app; sourceTree = BUILT_PRODUCTS_DIR; };
+		C10000000000000000000001 /* WakeMain.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = WakeMain.swift; sourceTree = "<group>"; };
+		C10000000000000000000002 /* AppModel.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = AppModel.swift; sourceTree = "<group>"; };
+		C10000000000000000000003 /* MenuBarController.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = MenuBarController.swift; sourceTree = "<group>"; };
+		C10000000000000000000004 /* DesktopWindow.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = DesktopWindow.swift; sourceTree = "<group>"; };
+		C10000000000000000000005 /* DesktopController.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = DesktopController.swift; sourceTree = "<group>"; };
+		C10000000000000000000006 /* Shaders.metal */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.metal; path = Shaders.metal; sourceTree = "<group>"; };
+		C10000000000000000000007 /* SimTypes.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = SimTypes.swift; sourceTree = "<group>"; };
+		C10000000000000000000008 /* FluidSimulator.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = FluidSimulator.swift; sourceTree = "<group>"; };
+		C10000000000000000000009 /* FluidView.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = FluidView.swift; sourceTree = "<group>"; };
+		C1000000000000000000000A /* ScreenGeometry.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = ScreenGeometry.swift; sourceTree = "<group>"; };
+		C1000000000000000000000B /* WindowMotionTracker.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = WindowMotionTracker.swift; sourceTree = "<group>"; };
+		C1000000000000000000000C /* Palette.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = Palette.swift; sourceTree = "<group>"; };
+		C1000000000000000000000D /* SettingsStore.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = SettingsStore.swift; sourceTree = "<group>"; };
+		C1000000000000000000000E /* PowerMonitor.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = PowerMonitor.swift; sourceTree = "<group>"; };
+		C1000000000000000000000F /* Assets.xcassets */ = {isa = PBXFileReference; lastKnownFileType = folder.assetcatalog; path = Assets.xcassets; sourceTree = "<group>"; };
+		C10000000000000000000010 /* Info.plist */ = {isa = PBXFileReference; lastKnownFileType = text.plist.xml; path = Info.plist; sourceTree = "<group>"; };
+/* End PBXFileReference section */
+
+/* Begin PBXFrameworksBuildPhase section */
+		A10000000000000000000004 /* Frameworks */ = {
+			isa = PBXFrameworksBuildPhase;
+			buildActionMask = 2147483647;
+			files = (
+			);
+			runOnlyForDeploymentPostprocessing = 0;
+		};
+/* End PBXFrameworksBuildPhase section */
+
+/* Begin PBXGroup section */
+		A10000000000000000000010 = {
+			isa = PBXGroup;
+			children = (
+				A10000000000000000000011 /* Wake */,
+				A1000000000000000000001A /* Products */,
+			);
+			sourceTree = "<group>";
+		};
+		A10000000000000000000011 /* Wake */ = {
+			isa = PBXGroup;
+			children = (
+				A10000000000000000000012 /* App */,
+				A10000000000000000000013 /* Menu */,
+				A10000000000000000000014 /* Wallpaper */,
+				A10000000000000000000015 /* Fluid */,
+				A10000000000000000000016 /* Tracking */,
+				A10000000000000000000017 /* Settings */,
+				A10000000000000000000018 /* System */,
+				A10000000000000000000019 /* Resources */,
+				C10000000000000000000010 /* Info.plist */,
+			);
+			path = Wake;
+			sourceTree = "<group>";
+		};
+		A10000000000000000000012 /* App */ = {
+			isa = PBXGroup;
+			children = (
+				C10000000000000000000001 /* WakeMain.swift */,
+				C10000000000000000000002 /* AppModel.swift */,
+			);
+			path = App;
+			sourceTree = "<group>";
+		};
+		A10000000000000000000013 /* Menu */ = {
+			isa = PBXGroup;
+			children = (
+				C10000000000000000000003 /* MenuBarController.swift */,
+			);
+			path = Menu;
+			sourceTree = "<group>";
+		};
+		A10000000000000000000014 /* Wallpaper */ = {
+			isa = PBXGroup;
+			children = (
+				C10000000000000000000004 /* DesktopWindow.swift */,
+				C10000000000000000000005 /* DesktopController.swift */,
+			);
+			path = Wallpaper;
+			sourceTree = "<group>";
+		};
+		A10000000000000000000015 /* Fluid */ = {
+			isa = PBXGroup;
+			children = (
+				C10000000000000000000006 /* Shaders.metal */,
+				C10000000000000000000007 /* SimTypes.swift */,
+				C10000000000000000000008 /* FluidSimulator.swift */,
+				C10000000000000000000009 /* FluidView.swift */,
+			);
+			path = Fluid;
+			sourceTree = "<group>";
+		};
+		A10000000000000000000016 /* Tracking */ = {
+			isa = PBXGroup;
+			children = (
+				C1000000000000000000000A /* ScreenGeometry.swift */,
+				C1000000000000000000000B /* WindowMotionTracker.swift */,
+			);
+			path = Tracking;
+			sourceTree = "<group>";
+		};
+		A10000000000000000000017 /* Settings */ = {
+			isa = PBXGroup;
+			children = (
+				C1000000000000000000000C /* Palette.swift */,
+				C1000000000000000000000D /* SettingsStore.swift */,
+			);
+			path = Settings;
+			sourceTree = "<group>";
+		};
+		A10000000000000000000018 /* System */ = {
+			isa = PBXGroup;
+			children = (
+				C1000000000000000000000E /* PowerMonitor.swift */,
+			);
+			path = System;
+			sourceTree = "<group>";
+		};
+		A10000000000000000000019 /* Resources */ = {
+			isa = PBXGroup;
+			children = (
+				C1000000000000000000000F /* Assets.xcassets */,
+			);
+			path = Resources;
+			sourceTree = "<group>";
+		};
+		A1000000000000000000001A /* Products */ = {
+			isa = PBXGroup;
+			children = (
+				A10000000000000000000006 /* Wake.app */,
+			);
+			name = Products;
+			sourceTree = "<group>";
+		};
+/* End PBXGroup section */
+
+/* Begin PBXNativeTarget section */
+		A10000000000000000000002 /* Wake */ = {
+			isa = PBXNativeTarget;
+			buildConfigurationList = A10000000000000000000021 /* Build configuration list for PBXNativeTarget "Wake" */;
+			buildPhases = (
+				A10000000000000000000003 /* Sources */,
+				A10000000000000000000004 /* Frameworks */,
+				A10000000000000000000005 /* Resources */,
+			);
+			buildRules = (
+			);
+			dependencies = (
+			);
+			name = Wake;
+			productName = Wake;
+			productReference = A10000000000000000000006 /* Wake.app */;
+			productType = "com.apple.product-type.application";
+		};
+/* End PBXNativeTarget section */
+
+/* Begin PBXProject section */
+		A10000000000000000000001 /* Project object */ = {
+			isa = PBXProject;
+			attributes = {
+				BuildIndependentTargetsInParallel = 1;
+				LastSwiftUpdateCheck = 1500;
+				LastUpgradeCheck = 1500;
+				ORGANIZATIONNAME = Wake;
+				TargetAttributes = {
+					A10000000000000000000002 = {
+						CreatedOnToolsVersion = 15.0;
+					};
+				};
+			};
+			buildConfigurationList = A10000000000000000000020 /* Build configuration list for PBXProject "Wake" */;
+			compatibilityVersion = "Xcode 14.0";
+			developmentRegion = en;
+			hasScannedForEncodings = 0;
+			knownRegions = (
+				en,
+				Base,
+			);
+			mainGroup = A10000000000000000000010;
+			productRefGroup = A1000000000000000000001A /* Products */;
+			projectDirPath = "";
+			projectRoot = "";
+			targets = (
+				A10000000000000000000002 /* Wake */,
+			);
+		};
+/* End PBXProject section */
+
+/* Begin PBXResourcesBuildPhase section */
+		A10000000000000000000005 /* Resources */ = {
+			isa = PBXResourcesBuildPhase;
+			buildActionMask = 2147483647;
+			files = (
+				D1000000000000000000000F /* Assets.xcassets in Resources */,
+			);
+			runOnlyForDeploymentPostprocessing = 0;
+		};
+/* End PBXResourcesBuildPhase section */
+
+/* Begin PBXSourcesBuildPhase section */
+		A10000000000000000000003 /* Sources */ = {
+			isa = PBXSourcesBuildPhase;
+			buildActionMask = 2147483647;
+			files = (
+				D10000000000000000000001 /* WakeMain.swift in Sources */,
+				D10000000000000000000002 /* AppModel.swift in Sources */,
+				D10000000000000000000003 /* MenuBarController.swift in Sources */,
+				D10000000000000000000004 /* DesktopWindow.swift in Sources */,
+				D10000000000000000000005 /* DesktopController.swift in Sources */,
+				D10000000000000000000006 /* Shaders.metal in Sources */,
+				D10000000000000000000007 /* SimTypes.swift in Sources */,
+				D10000000000000000000008 /* FluidSimulator.swift in Sources */,
+				D10000000000000000000009 /* FluidView.swift in Sources */,
+				D1000000000000000000000A /* ScreenGeometry.swift in Sources */,
+				D1000000000000000000000B /* WindowMotionTracker.swift in Sources */,
+				D1000000000000000000000C /* Palette.swift in Sources */,
+				D1000000000000000000000D /* SettingsStore.swift in Sources */,
+				D1000000000000000000000E /* PowerMonitor.swift in Sources */,
+			);
+			runOnlyForDeploymentPostprocessing = 0;
+		};
+/* End PBXSourcesBuildPhase section */
+
+/* Begin XCBuildConfiguration section */
+		A10000000000000000000022 /* Debug */ = {
+			isa = XCBuildConfiguration;
+			buildSettings = {
+				ALWAYS_SEARCH_USER_PATHS = NO;
+				CLANG_ANALYZER_NONNULL = YES;
+				CLANG_ANALYZER_NUMBER_OBJECT_CONVERSION = YES_AGGRESSIVE;
+				CLANG_CXX_LANGUAGE_STANDARD = "gnu++20";
+				CLANG_ENABLE_MODULES = YES;
+				CLANG_ENABLE_OBJC_ARC = YES;
+				CLANG_WARN_BLOCK_CAPTURE_AUTORELEASING = YES;
+				CLANG_WARN_BOOL_CONVERSION = YES;
+				CLANG_WARN_COMMA = YES;
+				CLANG_WARN_CONSTANT_CONVERSION = YES;
+				CLANG_WARN_DEPRECATED_OBJC_IMPLEMENTATIONS = YES;
+				CLANG_WARN_EMPTY_BODY = YES;
+				CLANG_WARN_ENUM_CONVERSION = YES;
+				CLANG_WARN_INFINITE_RECURSION = YES;
+				CLANG_WARN_INT_CONVERSION = YES;
+				CLANG_WARN_NON_LITERAL_NULL_CONVERSION = YES;
+				CLANG_WARN_OBJC_IMPLICIT_RETAIN_SELF = YES;
+				CLANG_WARN_OBJC_LITERAL_CONVERSION = YES;
+				CLANG_WARN_QUOTED_INCLUDE_IN_FRAMEWORK_HEADER = YES;
+				CLANG_WARN_RANGE_LOOP_ANALYSIS = YES;
+				CLANG_WARN_STRICT_PROTOTYPES = YES;
+				CLANG_WARN_SUSPICIOUS_MOVE = YES;
+				CLANG_WARN_UNREACHABLE_CODE = YES;
+				CLANG_WARN_UNUSED_FUNCTION = YES;
+				CLANG_WARN_UNUSED_VARIABLE = YES;
+				COPY_PHASE_STRIP = NO;
+				DEBUG_INFORMATION_FORMAT = dwarf;
+				ENABLE_STRICT_OBJC_MSGSEND = YES;
+				ENABLE_TESTABILITY = YES;
+				ENABLE_USER_SCRIPT_SANDBOXING = NO;
+				GCC_C_LANGUAGE_STANDARD = gnu11;
+				GCC_DYNAMIC_NO_PIC = NO;
+				GCC_NO_COMMON_BLOCKS = YES;
+				GCC_OPTIMIZATION_LEVEL = 0;
+				GCC_WARN_64_TO_32_BIT_CONVERSION = YES;
+				GCC_WARN_ABOUT_RETURN_TYPE = YES;
+				GCC_WARN_UNDECLARED_SELECTOR = YES;
+				GCC_WARN_UNINITIALIZED_AUTOS = YES_AGGRESSIVE;
+				GCC_WARN_UNUSED_FUNCTION = YES;
+				GCC_WARN_UNUSED_VARIABLE = YES;
+				MACOSX_DEPLOYMENT_TARGET = 13.0;
+				MTL_ENABLE_DEBUG_INFO = INCLUDE_SOURCE;
+				ONLY_ACTIVE_ARCH = YES;
+				SDKROOT = macosx;
+				SWIFT_ACTIVE_COMPILATION_CONDITIONS = DEBUG;
+				SWIFT_OPTIMIZATION_LEVEL = "-Onone";
+				SWIFT_STRICT_CONCURRENCY = minimal;
+				SWIFT_VERSION = 5.0;
+			};
+			name = Debug;
+		};
+		A10000000000000000000023 /* Release */ = {
+			isa = XCBuildConfiguration;
+			buildSettings = {
+				ALWAYS_SEARCH_USER_PATHS = NO;
+				CLANG_ANALYZER_NONNULL = YES;
+				CLANG_ANALYZER_NUMBER_OBJECT_CONVERSION = YES_AGGRESSIVE;
+				CLANG_CXX_LANGUAGE_STANDARD = "gnu++20";
+				CLANG_ENABLE_MODULES = YES;
+				CLANG_ENABLE_OBJC_ARC = YES;
+				CLANG_WARN_BLOCK_CAPTURE_AUTORELEASING = YES;
+				CLANG_WARN_BOOL_CONVERSION = YES;
+				CLANG_WARN_COMMA = YES;
+				CLANG_WARN_CONSTANT_CONVERSION = YES;
+				CLANG_WARN_DEPRECATED_OBJC_IMPLEMENTATIONS = YES;
+				CLANG_WARN_EMPTY_BODY = YES;
+				CLANG_WARN_ENUM_CONVERSION = YES;
+				CLANG_WARN_INFINITE_RECURSION = YES;
+				CLANG_WARN_INT_CONVERSION = YES;
+				CLANG_WARN_NON_LITERAL_NULL_CONVERSION = YES;
+				CLANG_WARN_OBJC_IMPLICIT_RETAIN_SELF = YES;
+				CLANG_WARN_OBJC_LITERAL_CONVERSION = YES;
+				CLANG_WARN_QUOTED_INCLUDE_IN_FRAMEWORK_HEADER = YES;
+				CLANG_WARN_RANGE_LOOP_ANALYSIS = YES;
+				CLANG_WARN_STRICT_PROTOTYPES = YES;
+				CLANG_WARN_SUSPICIOUS_MOVE = YES;
+				CLANG_WARN_UNREACHABLE_CODE = YES;
+				CLANG_WARN_UNUSED_FUNCTION = YES;
+				CLANG_WARN_UNUSED_VARIABLE = YES;
+				COPY_PHASE_STRIP = NO;
+				DEBUG_INFORMATION_FORMAT = "dwarf-with-dsym";
+				ENABLE_NS_ASSERTIONS = NO;
+				ENABLE_STRICT_OBJC_MSGSEND = YES;
+				ENABLE_USER_SCRIPT_SANDBOXING = NO;
+				GCC_C_LANGUAGE_STANDARD = gnu11;
+				GCC_NO_COMMON_BLOCKS = YES;
+				GCC_WARN_64_TO_32_BIT_CONVERSION = YES;
+				GCC_WARN_ABOUT_RETURN_TYPE = YES;
+				GCC_WARN_UNDECLARED_SELECTOR = YES;
+				GCC_WARN_UNINITIALIZED_AUTOS = YES_AGGRESSIVE;
+				GCC_WARN_UNUSED_FUNCTION = YES;
+				GCC_WARN_UNUSED_VARIABLE = YES;
+				MACOSX_DEPLOYMENT_TARGET = 13.0;
+				MTL_ENABLE_DEBUG_INFO = NO;
+				ONLY_ACTIVE_ARCH = NO;
+				SDKROOT = macosx;
+				SWIFT_COMPILATION_MODE = wholemodule;
+				SWIFT_OPTIMIZATION_LEVEL = "-O";
+				SWIFT_STRICT_CONCURRENCY = minimal;
+				SWIFT_VERSION = 5.0;
+			};
+			name = Release;
+		};
+		A10000000000000000000024 /* Debug */ = {
+			isa = XCBuildConfiguration;
+			buildSettings = {
+				ASSETCATALOG_COMPILER_APPICON_NAME = AppIcon;
+				CODE_SIGN_IDENTITY = "-";
+				CODE_SIGN_STYLE = Manual;
+				CODE_SIGNING_REQUIRED = NO;
+				COMBINE_HIDPI_IMAGES = YES;
+				CURRENT_PROJECT_VERSION = 1;
+				ENABLE_HARDENED_RUNTIME = NO;
+				GENERATE_INFOPLIST_FILE = NO;
+				INFOPLIST_FILE = Wake/Info.plist;
+				LD_RUNPATH_SEARCH_PATHS = (
+					"$(inherited)",
+					"@executable_path/../Frameworks",
+				);
+				MARKETING_VERSION = 1.0.0;
+				OTHER_LDFLAGS = (
+					"-framework",
+					AppKit,
+					"-framework",
+					Metal,
+					"-framework",
+					MetalKit,
+					"-framework",
+					QuartzCore,
+					"-framework",
+					IOKit,
+					"-framework",
+					ServiceManagement,
+				);
+				PRODUCT_BUNDLE_IDENTIFIER = app.wake.desktop;
+				PRODUCT_NAME = "$(TARGET_NAME)";
+				SWIFT_EMIT_LOC_STRINGS = YES;
+				SWIFT_STRICT_CONCURRENCY = minimal;
+				SWIFT_VERSION = 5.0;
+			};
+			name = Debug;
+		};
+		A10000000000000000000025 /* Release */ = {
+			isa = XCBuildConfiguration;
+			buildSettings = {
+				ASSETCATALOG_COMPILER_APPICON_NAME = AppIcon;
+				CODE_SIGN_IDENTITY = "-";
+				CODE_SIGN_STYLE = Manual;
+				CODE_SIGNING_REQUIRED = NO;
+				COMBINE_HIDPI_IMAGES = YES;
+				CURRENT_PROJECT_VERSION = 1;
+				ENABLE_HARDENED_RUNTIME = NO;
+				GENERATE_INFOPLIST_FILE = NO;
+				INFOPLIST_FILE = Wake/Info.plist;
+				LD_RUNPATH_SEARCH_PATHS = (
+					"$(inherited)",
+					"@executable_path/../Frameworks",
+				);
+				MARKETING_VERSION = 1.0.0;
+				OTHER_LDFLAGS = (
+					"-framework",
+					AppKit,
+					"-framework",
+					Metal,
+					"-framework",
+					MetalKit,
+					"-framework",
+					QuartzCore,
+					"-framework",
+					IOKit,
+					"-framework",
+					ServiceManagement,
+				);
+				PRODUCT_BUNDLE_IDENTIFIER = app.wake.desktop;
+				PRODUCT_NAME = "$(TARGET_NAME)";
+				SWIFT_EMIT_LOC_STRINGS = YES;
+				SWIFT_STRICT_CONCURRENCY = minimal;
+				SWIFT_VERSION = 5.0;
+			};
+			name = Release;
+		};
+/* End XCBuildConfiguration section */
+
+/* Begin XCConfigurationList section */
+		A10000000000000000000020 /* Build configuration list for PBXProject "Wake" */ = {
+			isa = XCConfigurationList;
+			buildConfigurations = (
+				A10000000000000000000022 /* Debug */,
+				A10000000000000000000023 /* Release */,
+			);
+			defaultConfigurationIsVisible = 0;
+			defaultConfigurationName = Release;
+		};
+		A10000000000000000000021 /* Build configuration list for PBXNativeTarget "Wake" */ = {
+			isa = XCConfigurationList;
+			buildConfigurations = (
+				A10000000000000000000024 /* Debug */,
+				A10000000000000000000025 /* Release */,
+			);
+			defaultConfigurationIsVisible = 0;
+			defaultConfigurationName = Release;
+		};
+/* End XCConfigurationList section */
+	};
+	rootObject = A10000000000000000000001 /* Project object */;
+}
